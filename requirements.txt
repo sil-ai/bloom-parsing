@@ -1,3 +1,5 @@
-cld3
+Cython
+protobuf
+pycld3
 pandas
 argparse

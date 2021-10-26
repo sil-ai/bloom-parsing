@@ -2,7 +2,11 @@ FROM python
 
 COPY requirements.txt .
 
-RUN pip install -r requirements.txt
+RUN apt update && \
+    apt-get install -y \
+        protobuf-compiler && \
+    pip install -r requirements.txt && \
+    rm -rf var/lin/apt/lists/*
 
 RUN mkdir /app
 COPY book_parser.py /app/book_parser.py
