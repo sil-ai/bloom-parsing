@@ -19,16 +19,35 @@ def sorted_book(source):
     
     soup = BeautifulSoup(page, 'html.parser')
     
-    book = soup.select("div p")
+    divs = soup.findAll('div')
     
-    for text in book:
-        if text.get_text() != '':
-            book_text = text.get_text()
-            book_language = cld3.get_language(str(book_text)).language
-            if book_language != 'en' and book_language != 'un':
-                book_sorted.append(book_text)
+    i = 0
+    BookText = {}
     
-    return book_sorted
+    for div in divs:
+        
+        if div.has_attr('class') and 'bloom-translationGroup' in div.get('class'):
+            entry = {}
+            subdivs = div.findAll('div')
+            
+            for subdiv in subdivs:
+                
+                if (subdiv.has_attr('lang') and 
+                        subdiv.get('lang') != '*' and 
+                        subdiv.get('lang') != ''):
+                    
+                    texts = subdiv.findAll('p')
+                    
+                    for text in texts:
+                        book_text = text.get_text()
+                        entry[subdiv.get('lang')] = book_text
+                    
+                    if len(entry.keys()) > 0:
+                        BookText[i] = entry
+                    
+                    i += 1
+
+    return BookText
 
 def metadata(source):
     mpath = os.path.join(source, "meta.json")
@@ -39,10 +58,13 @@ def metadata(source):
     return metadata
 
 def output(source, metadata, book_content, outdir):
-    text_key = {'BookText': book_content}
-    metadata.update(text_key)
-    
-    with open(os.path.join(outdir, "out.json"), "w") as f:
+    metadata.update(book_content)
+   
+    key = metadata['downloadSource']
+    split_key = key.split('/')
+    filename = split_key[1] + '.json'
+
+    with open(os.path.join(outdir, filename), "w") as f:
         metadata_full = json.dump(
                 metadata,f, indent="  ",
                 check_circular=True, allow_nan=True,
