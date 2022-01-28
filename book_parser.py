@@ -1,10 +1,10 @@
-import argparse
-import cld3
-import pandas as pd
 import os
 import json
 from os import listdir
 from os.path import isfile, join
+
+import argparse
+import pandas as pd
 from bs4 import BeautifulSoup
 
 def sorted_book(source):
@@ -38,14 +38,18 @@ def sorted_book(source):
                     
                     texts = subdiv.findAll('p')
                     
+                    book_text = ''
                     for text in texts:
-                        book_text = text.get_text()
-                        entry[subdiv.get('lang')] = book_text
+                        if book_text != '':
+                            book_text += '\n' + text.get_text()
+                        else:
+                            book_text = text.get_text()
+                    entry[subdiv.get('lang')] = book_text
                     
-                    if len(entry.keys()) > 0:
-                        BookText[i] = entry
+            if len(entry.keys()) > 0:
+                BookText[i] = entry
                     
-                    i += 1
+            i += 1
 
     return BookText
 
