@@ -3,6 +3,7 @@ import os
 from os import listdir
 from os.path import isfile, join
 import json
+from collections import defaultdict
 
 
 def main():
@@ -26,7 +27,8 @@ def main():
         os.makedirs(args.out)
 
     # loop over book files
-    languages = {}
+    # languages = {}
+    languages = defaultdict(list)
     for jsonfile in listdir(args.source):
         if ".json" in jsonfile:
             with open(join(args.source, jsonfile)) as f:
@@ -35,17 +37,32 @@ def main():
         # Get language and family 
         for lang in book['bookText']:
 
-            # Add to list of books for language
-            if lang in languages.keys() and languages[lang] != None:
-                languages[lang].append(book['bookText'][lang])
-            elif book['bookText'][lang] != None:
-                languages[lang] = [book['bookText'][lang]]
+            # create a new dictionary to hold text and metadata for this particular language. 
+            book_for_lang = {}
+            book_for_lang["title"] = book["title"]
+            book_for_lang["bookText"] = book["bookText"]
 
+            # Add to list of books for language # TODO: defaultdict(list)
+            languages[lang].append(book['bookText'][lang]) # works if it's a defaultdict
+
+            # if lang in languages.keys() and languages[lang] != None:
+            #     languages[lang].append(book['bookText'][lang])
+            #     # languages[lang].append(book_for_lang)
+            # elif book['bookText'][lang] != None:
+            #     languages[lang] = [book['bookText'][lang]]
+            #     # languages[lang] = [book_for_lang]
+                
+
+    total = 0
     for lang in languages.keys():
         if languages[lang] != None:
-            books = list(set(languages[lang]))
+            books = list(languages[lang])
+            books_count = len(books)
+            print(f"for lang {lang} there are {books_count} books")
             languages[lang] = books
+            total = total + books_count
 
+    print(f"wrote out {total} books")
     # Output data for language modeling
     with open(join(args.out, 'lm.json'), 'w') as outFile:
         json.dump(languages, outFile, indent=4, sort_keys=True)
