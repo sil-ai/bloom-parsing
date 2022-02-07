@@ -27,7 +27,6 @@ def main():
         os.makedirs(args.out)
 
     # loop over book files
-    # languages = {}
     languages = defaultdict(list)
     for jsonfile in listdir(args.source):
         if ".json" in jsonfile:
@@ -40,10 +39,18 @@ def main():
             # create a new dictionary to hold text and metadata for this particular language. 
             book_for_lang = {}
             book_for_lang["title"] = book["title"]
-            book_for_lang["bookText"] = book["bookText"]
+            book_for_lang["license"] = book["license"]
+            book_for_lang["copyright"] = book["copyright"]
+            book_for_lang["pageCount"] = book["pageCount"]
+            book_for_lang["bookInstanceId"] = book["bookInstanceId"]
+            book_for_lang["bookLineage"] = book["bookLineage"]
+            book_for_lang["allTitles"] = book["allTitles"]
+            book_for_lang["contentLanguages"] = book["contentLanguages"]
+            book_for_lang["bookText"] = book["bookText"][lang] # there might be multiple languages in there. We want this specific language. 
 
             # Add to list of books for language # TODO: defaultdict(list)
-            languages[lang].append(book['bookText'][lang]) # works if it's a defaultdict
+            # languages[lang].append(book['bookText'][lang]) # works if it's a defaultdict
+            languages[lang].append(book_for_lang) # works if it's a defaultdict
 
             # if lang in languages.keys() and languages[lang] != None:
             #     languages[lang].append(book['bookText'][lang])
