@@ -4,6 +4,7 @@ from os import listdir
 from os.path import isfile, join
 import json
 from collections import defaultdict
+from tqdm import tqdm
 
 
 def main():
@@ -28,7 +29,7 @@ def main():
 
     # loop over book files
     languages = defaultdict(list)
-    for jsonfile in listdir(args.source):
+    for jsonfile in tqdm(listdir(args.source)):
         if ".json" in jsonfile:
             with open(join(args.source, jsonfile)) as f:
                 book = json.load(f)

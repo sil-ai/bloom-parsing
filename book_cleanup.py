@@ -3,7 +3,7 @@ import os
 from os import listdir
 from os.path import isfile, join
 import json
-
+from tqdm import tqdm
 import pandas as pd
 
 
@@ -75,7 +75,7 @@ def main():
     # loop over book files
     i = 0
     count = 0
-    for jsonfile in listdir(args.source):
+    for jsonfile in tqdm(listdir(args.source)):
         if ".json" in jsonfile:
             with open(join(args.source, jsonfile)) as f:
                 book = json.load(f)
