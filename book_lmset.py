@@ -34,32 +34,35 @@ def main():
             with open(join(args.source, jsonfile)) as f:
                 book = json.load(f)
 
-        # Get language and family 
-        for lang in book['bookText']:
+                # Get language and family 
+                for lang in book['bookText']:
 
-            # create a new dictionary to hold text and metadata for this particular language. 
-            book_for_lang = {}
-            book_for_lang["title"] = book["title"]
-            book_for_lang["license"] = book["license"]
-            book_for_lang["copyright"] = book["copyright"]
-            book_for_lang["pageCount"] = book["pageCount"]
-            book_for_lang["bookInstanceId"] = book["bookInstanceId"]
-            book_for_lang["bookLineage"] = book["bookLineage"]
-            book_for_lang["allTitles"] = book["allTitles"]
-            book_for_lang["contentLanguages"] = book["contentLanguages"]
-            book_for_lang["bookText"] = book["bookText"][lang] # there might be multiple languages in there. We want this specific language. 
+                    # create a new dictionary to hold text and metadata for this particular language. 
+                    book_for_lang = {}
+                    book_for_lang["title"] = book["title"]
+                    book_for_lang["license"] = book["license"]
+                    book_for_lang["copyright"] = book["copyright"]
+                    book_for_lang["pageCount"] = book["pageCount"]
+                    book_for_lang["bookInstanceId"] = book["bookInstanceId"]
+                    book_for_lang["bookLineage"] = book["bookLineage"]
+                    book_for_lang["allTitles"] = book["allTitles"]
+                    book_for_lang["contentLanguages"] = book["contentLanguages"]
+                    book_for_lang["bookText"] = book["bookText"][lang] # there might be multiple languages in there. We want this specific language. 
+                    book_for_lang["topic"] = "NoTopic"
 
-            # Add to list of books for language # TODO: defaultdict(list)
-            # languages[lang].append(book['bookText'][lang]) # works if it's a defaultdict
-            languages[lang].append(book_for_lang) # works if it's a defaultdict
-
-            # if lang in languages.keys() and languages[lang] != None:
-            #     languages[lang].append(book['bookText'][lang])
-            #     # languages[lang].append(book_for_lang)
-            # elif book['bookText'][lang] != None:
-            #     languages[lang] = [book['bookText'][lang]]
-            #     # languages[lang] = [book_for_lang]
-                
+                    tags = book["tags"]
+                    print(f"tags for {book['title']}: {tags}")
+                    for tag in tags: 
+                        print(tag)
+                        if "topic" in tag:
+                            booktopic = tag.split(":")[-1]
+                            book_for_lang["topic"] = booktopic
+                            print(f"topic for {book['title']} from tags: {booktopic}")
+                    print(f"Final book topic: {book_for_lang['topic']}")
+                    print("^^^^^^^^^^^^^")
+                    # Add to list of books for language 
+                    languages[lang].append(book_for_lang) # works if it's a defaultdict
+                        
 
     total = 0
     for lang in languages.keys():
