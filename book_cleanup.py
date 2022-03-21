@@ -80,7 +80,7 @@ def main():
             with open(join(args.source, jsonfile)) as f:
                 book = json.load(f)
 
-            if book['experimental'] == False:
+            if book['experimental'] == False and 'cc-' in book['license']:
                 
                 # Clean out unwanted fields
                 for field in drop_fields:
