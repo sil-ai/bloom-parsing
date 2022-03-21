@@ -34,12 +34,13 @@ def parse_text_from_one_htmfile(htmfile_path):
 
     soup = BeautifulSoup(page, "html.parser")
 
-    booktitle = soup.find("title")
-    print(f"book title: {booktitle.text}")
+    # MAYBE: cross-reference with metadata?
+    # booktitle = soup.find("title")
+    # print(f"book title: {booktitle.text}")
 
     divs = soup.findAll("div")
 
-    i = 0
+    i = 0  # TODO: figure out what this index is for -CDL
     BookText = {}
 
     for div in divs:
@@ -118,6 +119,8 @@ def main():
     )
 
     args = parser.parse_args()
+    output_folder = Path(args.out)
+    output_folder.mkdir(parents=True, exist_ok=True)
     # print(f"args.source {args.source}")
 
     # book_texts = parse_htmfiles(args.source)
