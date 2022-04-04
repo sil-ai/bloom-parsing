@@ -160,4 +160,9 @@ cython_debug/
 
 
 # Colin added this
-bloom_downloads/
+bloom_downloads*/
+small_test*
+credentials.json
+placeholders/
+old/
+.vscode/
