@@ -6,6 +6,49 @@ import argparse
 import json
 from tqdm import tqdm
 
+
+def precompute_ids_and_hashes_for_dir_of_books(source_dir, output_file):
+    """
+    Given a directory of Bloom books, will calculate md5 and uuid for each file and output them. 
+    """
+    files_dict = defaultdict(dict)
+    for bloom_file in tqdm(source_dir.rglob("*")):
+        if bloom_file.is_file():
+            book_name = bloom_file.parent.name
+            filename = bloom_file.name
+
+            hash = calculate_hash_for_file(bloom_file)
+
+            id = str(uuid.uuid4())
+
+            file_dict = {
+                "book_name": book_name,
+                "filename": filename,
+                "hash": hash,
+                "id": id,
+            }
+
+            files_dict[book_name][filename] = file_dict
+
+    # print(f"We have {len(files_dict.keys())} books in our dictionary.")
+    print(f"We have {len(files_dict)} books in our dictionary.")
+    with open(output_file, "w") as outfile:
+        json.dump(files_dict, outfile)
+
+
+def calculate_hash_for_file(bloom_file):
+    """
+    Based on https://www.pythoncentral.io/hashing-files-with-python/
+    """
+    md5_hasher = hashlib.md5()
+    with open(bloom_file, "rb") as bloom_file_fd:
+        buf = bloom_file_fd.read()
+        md5_hasher.update(buf)
+
+    hash = md5_hasher.hexdigest()
+    return hash
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Precompute Bloom book file hashes and ids"
@@ -25,32 +68,9 @@ if __name__ == "__main__":
         help="output file for ids and hashes. Defaults to ./ids_and_hashes.json",
     )
     args = parser.parse_args()
+
+    source_dir = args.source_dir
+    output_file = args.output_file
     print(args)
 
-    files_dict = defaultdict(dict)
-    for bloom_file in tqdm(args.source_dir.rglob("*")):
-        if bloom_file.is_file():
-            md5_hasher = hashlib.md5()
-            with open(bloom_file, "rb") as bloom_file_fd:
-                buf = bloom_file_fd.read()
-                md5_hasher.update(buf)
-                # while len(buf) > 0:
-
-            book_name = bloom_file.parent.name
-            filename = bloom_file.name
-            hash = md5_hasher.hexdigest()
-            id = str(uuid.uuid4())
-
-            file_dict = {
-                "book_name": book_name,
-                "filename": filename,
-                "hash": hash,
-                "id": id,
-            }
-
-            files_dict[book_name][filename] = file_dict
-
-    # print(f"We have {len(files_dict.keys())} books in our dictionary.")
-    print(f"We have {len(files_dict)} books in our dictionary.")
-    with open(args.output_file, "w") as outfile:
-        json.dump(files_dict, outfile)
+    precompute_ids_and_hashes_for_dir_of_books(source_dir, output_file)
