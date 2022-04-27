@@ -9,63 +9,59 @@ import pandas as pd
 
 # fields to drop from the metadata
 drop_fields = [
-        "a11y_NoEssentialInfoByColor",
-        "a11y_NoTextIncludedInAnyImages",
-        "epub_HowToPublishImageDescriptions",
-        "epub_RemoveFontStyles",
-        "bloomdVersion",
-        "experimental",
-        "baseUrl",
-        "bookOrder",
-        "downloadSource", 
-        "formatVersion",
-        "allowUploadingToBloomLibrary",
-        "bookletMakingIsAppropriate",
-        "LeveledReaderTool",
-        "LeveledReaderLevel",
-        "xmatterName",
-        "uploader",
-        "tools",
-        "currentTool",
-        "toolboxIsOpen",
-        "hazards",
-        "a11yFeatures",
-        "a11yLevel",
-        "a11yCertifier",
-        "internetLimits"
-        "use-original-copyright"
-        ]
+    "a11y_NoEssentialInfoByColor",
+    "a11y_NoTextIncludedInAnyImages",
+    "epub_HowToPublishImageDescriptions",
+    "epub_RemoveFontStyles",
+    "bloomdVersion",
+    # "experimental", # used in lmset later.
+    "baseUrl",
+    "bookOrder",
+    "downloadSource",
+    "formatVersion",
+    "allowUploadingToBloomLibrary",
+    "bookletMakingIsAppropriate",
+    "LeveledReaderTool",
+    "LeveledReaderLevel",
+    "xmatterName",
+    "uploader",
+    "tools",
+    "currentTool",
+    "toolboxIsOpen",
+    "hazards",
+    "a11yFeatures",
+    "a11yLevel",
+    "a11yCertifier",
+    "internetLimits" "use-original-copyright",
+]
 
 # Open ISO code table
-iso_table = 'assets/iso-639-3_Code_Tables_20210218/iso-639-3.tab'
-iso_codes = pd.read_csv(iso_table, sep='\t')
+iso_table = "assets/iso-639-3_Code_Tables_20210218/iso-639-3.tab"
+iso_codes = pd.read_csv(iso_table, sep="\t")
 
 
 # convertISO converts language codes to iso639-3
 def convertISO(lang):
     if len(lang) == 3:
         return lang
-    candidates = iso_codes[iso_codes['Part1'] == lang]
+    candidates = iso_codes[iso_codes["Part1"] == lang]
     if len(candidates) > 0:
-        return candidates['Id'].values.tolist()[0]
+        return candidates["Id"].values.tolist()[0]
     else:
-        return ''
+        return ""
 
 
 def main():
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(
-            description="Postprocess Bloom books"
-            )
+    parser = argparse.ArgumentParser(description="Postprocess Bloom books")
 
     parser.add_argument(
-            "--source",dest='source',
-            help="directory containing the bloom book extracts"
-            )
-    parser.add_argument("--out", dest='out',
-            help="output directory for cleaned book extracts"
-            )
+        "--source", dest="source", help="directory containing the bloom book extracts"
+    )
+    parser.add_argument(
+        "--out", dest="out", help="output directory for cleaned book extracts"
+    )
     args = parser.parse_args()
 
     # Create output directory if its not there
@@ -80,8 +76,9 @@ def main():
             with open(join(args.source, jsonfile)) as f:
                 book = json.load(f)
 
-            if book['experimental'] == False and 'cc-' in book['license']:
-                
+            print(book["title"])
+            if book["experimental"] == False and "cc-" in book["license"]:
+
                 # Clean out unwanted fields
                 for field in drop_fields:
                     if field in book.keys():
@@ -117,7 +114,7 @@ def main():
                 for idx in samples.keys():
                     entry = {}
                     for l in samples[idx].keys():
-                        if l in languages.keys() and languages[l] != '':
+                        if l in languages.keys() and languages[l] != "":
                             entry[convertISO(l)] = samples[idx][l]
                     new_samples[i] = entry
                     i += 1
@@ -136,8 +133,8 @@ def main():
                         if l in samples[sample].keys():
                             full_text.append(samples[sample][l])
                         else:
-                            full_text.append('')
-                    full_texts[l] = '\n'.join(full_text)
+                            full_text.append("")
+                    full_texts[l] = "\n".join(full_text)
 
                 # If there isn't any text in a language, delete it
                 # from the content languages and full_text entries.
@@ -155,13 +152,14 @@ def main():
                     del languages[l]
 
                 # Add new fields
-                book['contentLanguages'] = list(languages.values())
-                book['bookSamples'] = samples
-                book['bookText'] = full_texts
+                book["contentLanguages"] = list(languages.values())
+                book["bookSamples"] = samples
+                book["bookText"] = full_texts
 
                 # Save out the modified file
-                with open(join(args.out, jsonfile), 'w') as outFile:
+                with open(join(args.out, jsonfile), "w") as outFile:
                     json.dump(book, outFile, indent=4, sort_keys=True)
+
 
 if __name__ == "__main__":
     main()
