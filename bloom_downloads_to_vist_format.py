@@ -1,12 +1,13 @@
 import argparse
+from collections import defaultdict
 from pathlib import Path
 import random
 import uuid
 import json
 import logging
-from attr import attr
 from bs4 import BeautifulSoup, PageElement
 import precompute_file_uuids_and_hashes
+from urllib.parse import unquote
 
 
 # https://stackoverflow.com/questions/4292029/how-to-get-a-list-of-file-extensions-for-a-general-file-type
@@ -55,12 +56,170 @@ def get_image_files_in_folder(book_folder):
     ]
 
 
-def parse_matching_images_and_captions_from_htmfile(htmfile_path):
-    story = (
-        []
-    )  # storing the img names from img elements, e.g. 21-chuskit-goes-to-school_Page_01_Image_0001.png
+def create_vist_story_for_book(
+    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album, book_htm
+):
+    """
+    'story' is when you've got captions for an album. in VIST you might have had an album of images,
+    and then have that album get turned into a story by volunteers more than once. 
+    So for one album you might have multiple stories. In our case we assume one story per htm. 
+    Thus we can safely use the uuid of the htm to be our story ID. 
+    If we run into multiple 'stories' per book we'd have to rethink this, 
+    """
+    story_id = ids_and_hashes[book_folder.name][book_htm.name][
+        "id"
+    ]  # it is a uuid, it is unique to the story. #TODO: uuid3 for story ID?
+    story = {
+        "story_id": story_id,
+        "image_caption_pairs": image_caption_pairs,
+    }
 
-    # print(f"thingamajig: {htmfile_path}")
+    return story
+
+
+def create_vist_images_for_book(
+    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album
+):
+    """
+    VIST dataset had an array of image dictionaries called 'images'. 
+    Each entry contained a URL. We're just gonna put 
+    """
+    # example_images = {
+    #     "images": [
+    #         {
+    #             "datetaken": "2004-11-27 10:40:46",
+    #             "license": "1",
+    #             "title": "The venue.",
+    #             "text": "",
+    #             "album_id": "44277",
+    #             "longitude": "-0.212688",
+    #             "url_o": "https://farm1.staticflickr.com/2/1741642_81837e8e9e_o.jpg",
+    #             "secret": "81837e8e9e",
+    #             "media": "photo",
+    #             "latitude": "51.920449",
+    #             "id": "1741642",
+    #             "tags": "stevenage fairies craftfair xmas 2004",
+    #         },
+    #     ]
+    # }
+    vist_images_for_book = []
+    for image, _ in image_caption_pairs:
+        image_id = ids_and_hashes[book_folder.name][image]["id"]
+
+        image_dict = {
+            # "datetaken": "", # TODO: image datetaken
+            # "license": "1", # TODO: image license
+            # "title": "",  # TODO: image title
+            # "text": "",  # TODO: image text
+            "album_id": vist_album["id"],  # TODO: image
+            # "longitude": "-0.212688",  # TODO: image longitude
+            "url_o": f"{book_folder.name}/{image}",  # TODO: image URL
+            # "secret": "81837e8e9e",  # TODO: image secret
+            "media": "photo",
+            # "latitude": "51.920449",  # TODO: image latitude
+            "id": str(image_id),
+            # "tags": "stevenage fairies craftfair xmas 2004", # TODO: image tags
+        }
+
+        vist_images_for_book.append(image_dict)
+    return vist_images_for_book
+
+
+def create_vist_annotations_for_book(
+    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album, story
+):
+    # Copied from original VIST test.story-in-sequence.json
+    # example_annotations = {
+    #     "annotations": [
+    #         [
+    #             {
+    #                 "original_text": "The local parish holds a craft show each year.",
+    #                 "album_id": "44277",
+    #                 "photo_flickr_id": "1741642",
+    #                 "setting": "first-2-pick-and-tell",
+    #                 "worker_id": "FJROI8NWDRIPAM1",
+    #                 "story_id": "45530",
+    #                 "tier": "story-in-sequence",
+    #                 "worker_arranged_photo_order": 0,
+    #                 "text": "the local parish holds a craft show each year .",
+    #                 "storylet_id": "227650",
+    #             }
+    #         ],
+    #     ]
+    # }
+
+    # annotations is a list of lists, of dicts. Each annotation is a 1-element list.
+
+    annotations = []
+    for image, captions in image_caption_pairs:
+        image_id = ids_and_hashes[book_folder.name][image]["id"]
+        album_id = vist_album["id"]
+        # print(captions)
+
+        annotation = [
+            {
+                # "original_text": "The local parish holds a craft show each year.", # TODO: annotation original_text
+                "album_id": album_id,
+                "photo_flickr_id": image_id,  # TODO: annotation photo_flickr_id
+                # "setting": "first-2-pick-and-tell", # TODO: annotation setting
+                # "worker_id": "FJROI8NWDRIPAM1", # TODO: annotation worker_id
+                "story_id": story["story_id"],
+                # "tier": "story-in-sequence",  # TODO: tier
+                # "worker_arranged_photo_order": 0, # TODO: worker_arranged_photo_order
+                "text": captions,  # NOTE: this is different than VIST format!
+                # "storylet_id": "227650", # TODO: annotation storylet id
+            }
+        ]
+
+        annotations.append(annotation)
+    return annotations
+
+
+def create_vist_album_for_book(image_caption_pairs, book_folder, metadata_fin):
+
+    # Took the following from original VIST
+    # example_album = {
+    #     "description": "I left Stevenage over twenty years ago, having lived there between the ages of 7 and 20. Yesterday (on International Buy Nothing Day!) we returned for a 'Victorian Craft Fair' in the Church above the town Museum. Very strange...",
+    #     "title": "A trip to Stevenage",
+    #     "farm": "1",
+    #     "date_update": "1396811566",
+    #     "primary": "1741611",
+    #     "server": "2",
+    #     "date_create": "44277",
+    #     "photos": "23",
+    #     "secret": "3f374c96e5",
+    #     "owner": "37996585435@N01",
+    #     "vist_label": "fair",
+    #     "id": "44277",
+    # }
+    vist_album = {
+        # "description": "",  # TODO: album description
+        "title": f"{book_folder.name}",  # todo: set album title from metatada?
+        # "farm": "",  # TODO: album farm
+        # "date_update": "",  # TODO: album date_update
+        # "primary": "",  # TODO: album primary
+        # "server": "",  # TODO: album server
+        # "date_create": "",  # TODO: album date_create
+        "photos": f"{len(image_caption_pairs)}",
+        # "secret": "",  # TODO: album secret
+        # "owner": "",  # TODO: album owner
+        # "vist_label": "",  # TODO: album vist_label
+        "id": str(uuid.uuid4()),
+    }
+    return vist_album
+
+
+def parse_matching_images_and_captions_from_htmfile(htmfile_path):
+
+    # HOW TO MATCH IMAGES TO TEXT? TODO: handle special cases
+    # if they're in the same numberedPage that's easy.
+    # But sometimes you have image on one page and captions on the next??
+    # Do we, like, make tuples, and then if there's
+    # (img, captions)
+    # (img, None)
+    # (None, captions)
+    # then we collapse the two together?
+    img_caption_tuples = []
     with open(htmfile_path) as file:
         page = file.read()
 
@@ -73,18 +232,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
     divs = soup.findAll("div")
     # topics = soup.select()
     pages = soup.find_all("div", class_="numberedPage")
-    print(f"pages count: {len(pages)}")
-    # print(f"first page: {pages[0]}")
-
-    # HOW TO MATCH IMAGES TO TEXT
-    # if they're in the same numberedPage that's easy.
-    # But sometimes you have image on one page and captions on the next??
-    # Do we, like, make tuples, and then if there's
-    # (img, captions)
-    # (img, None)
-    # (None, captions)
-    # then we collapse the two together?
-    img_caption_pairs = []
+    logging.info(f"pages count: {len(pages)}")
 
     for page in pages:
         logging.debug(f"xxxxxxxxxxxxxxxxxxx parsing page xxxxxxxxxxxxxxxxxxxxxxxxxx")
@@ -109,47 +257,40 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
             img_src = None
 
         if tg_divs:
-            tg_div = tg_divs[0]
-            captions = parse_translation_group(tg_div)
-            logging.debug(f"captions for tg_div: {captions}")
+            captions = defaultdict(str)
+            for tg_div in tg_divs:
+                tg_div_captions = parse_translation_group(tg_div)
+
+                for key in tg_div_captions.keys():
+                    captions[key] = captions[key] + tg_div_captions[key]
+
+            captions = dict(captions)
+            logging.debug(
+                f"captions found in {len(tg_divs)} translationGroups: {captions}"
+            )
         else:
             captions = None
+        img_caption_tuples.append((img_src, captions))
 
-        img_caption_pairs.append((img_src, captions))
+    logging.info(
+        f"From {htmfile_path.name}, extracted {len(img_caption_tuples)} tuples containing images and/or captions from numberedPage divs"
+    )
 
-    for pair in img_caption_pairs:
-        print(pair)
-    print(htmfile_path)
-    # exit()
+    return img_caption_tuples
 
-    # exit()
-    return story
-    i = 0  # TODO: figure out what this index is for -CDL
-    BookText = {}
-    Images = {}
 
-    for div in divs:
-        if div.has_attr("data-book") and "topic" in div.get("data-book"):
-            htmltopic = div.text.strip()
-            print(f"found the topic div: {htmltopic}")
+# def recursive_get_text(element):
 
-        # Get a page
-        if div.has_attr("class") and "numberedPage" in div.get("class"):
-            page_num = int(div.get("data-page-number"))
-            print(f"found a numberedPage with data-page-number {page_num}")
+#     print(f"parsing {element} for text")
+#     text = element.get_text()
 
-        # Get the images
+#     if text == "" and element.children:
+#         print(f"couldn't find text but there's kids, let's go down a level")
+#         for child in element.children:
+#             print(f" CHILD: {child}")
+#             text = text + recursive_get_text(child)
 
-        # Get the book text
-        if div.has_attr("class") and "bloom-translationGroup" in div.get("class"):
-            captions = parse_translation_group(div)
-
-            if len(captions.keys()) > 0:
-                BookText[i] = captions
-
-            i += 1
-
-    return BookText
+#     return text
 
 
 def parse_translation_group(tg_div):
@@ -157,6 +298,7 @@ def parse_translation_group(tg_div):
     subdivs = tg_div.find_all(
         "div", {"lang": True}  # finds subdivs with this attribute.
     )
+    # return recursive_get_text(tg_div)
 
     for subdiv in subdivs:
         if (
@@ -165,14 +307,17 @@ def parse_translation_group(tg_div):
             and subdiv.get("lang") != ""
             and subdiv.get("lang") != "z"  # always empty, not a valid code
         ):
-            texts = subdiv.findAll("p")
+
+            p_elements = subdiv.findAll("p")
+            # logging.debug(f"found texts: {p_elements}")
 
             book_text = ""
-            for text in texts:
+            for p_element in p_elements:
                 if book_text != "":
-                    book_text += "\n" + text.get_text()
+                    book_text += "\n" + p_element.get_text()
+
                 else:
-                    book_text = text.get_text()
+                    book_text = p_element.get_text()
             entry[subdiv.get("lang")] = book_text
     return entry
 
@@ -207,7 +352,41 @@ def find_book_htm(book_folder, metadata_fin):
     return book_htm
 
 
+def check_and_fix_image_caption_pairs(image_caption_pairs, book_folder, ids_and_hashes):
+    image_caption_pairs_checked = []
+    for image, captions in image_caption_pairs:
+        if image not in ids_and_hashes[book_folder.name]:
+
+            unquote_image = unquote(image)
+            if unquote_image != image:
+                print(f"{image} unquoted is {unquote_image}")
+            if unquote_image in ids_and_hashes[book_folder.name]:
+                image = unquote_image
+        pair = (image, captions)
+        image_caption_pairs_checked.append(pair)
+    return image_caption_pairs_checked
+
+
+def story_has_image_caption_matching_issues(image_caption_tuples: list):
+
+    for img, captions in image_caption_tuples:
+        if captions is None:
+            logging.debug(f"no matching img for captions {captions}")
+            return True
+
+        if img is None:
+            logging.debug(f"no matching caption for img {img}")
+            return True
+
+    return False
+
+
 if __name__ == "__main__":
+    bloom_vist = {
+        "en": {"images": [], "albums": [], "annotations": []},
+        "kyr": {"images": [], "albums": [], "annotations": []},
+        "hni": {"images": [], "albums": [], "annotations": []},
+    }
 
     parser = argparse.ArgumentParser(
         description="Take bloom downloads and output SIS JSON"
@@ -232,7 +411,7 @@ if __name__ == "__main__":
         dest="out",
         help="output directory for SIS-format JSON, defaults to ./data/bloom_sis",
         type=Path,
-        default=Path.cwd() / "data" / "bloom_sis",
+        default=Path.cwd() / "data" / "bloom_sis.json",
     )
 
     # https://stackoverflow.com/questions/57192387/how-to-set-logging-level-from-command-line
@@ -256,7 +435,7 @@ if __name__ == "__main__":
     level = levels.get(args.log.lower())
     if level is None:
         raise ValueError(
-            f"log level given: {options.log}"
+            f"log level given: {args.log}"
             f" -- must be one of: {' | '.join(levels.keys())}"
         )
 
@@ -271,6 +450,12 @@ if __name__ == "__main__":
     bloom_downloads = args.source
 
     book_folders = [subdir for subdir in bloom_downloads.iterdir() if subdir.is_dir()]
+    successfully_parsed_books = []
+
+    bloom_images = []  # a list of dicts
+    bloom_albums = []  # a list of dicts
+    bloom_annotations = []  # a list of 1-element lists, each containing a dict.
+
     for book_folder in book_folders:
         logging.info("***************")
         logging.info(f"parsing book {book_folder}")
@@ -293,6 +478,7 @@ if __name__ == "__main__":
             continue
 
         book_htm = find_book_htm(book_folder, metadata_fin)
+
         if not book_htm:
             logging.warning(f"couldn't find book htm. Skipping")
             continue
@@ -301,7 +487,7 @@ if __name__ == "__main__":
             logging.warning(f"could not find image files. Skipping")
             continue
 
-        # get the precomputed hashes and ids.
+        # load the precomputed hashes and ids.
         try:
             file_ids_and_hashes_for_folder = ids_and_hashes[book_folder.name]
             logging.debug(
@@ -309,36 +495,104 @@ if __name__ == "__main__":
             )
         except KeyError:
             logging.warning(
-                f"could not find ids/hashes for {book_folder.name}, skipping.&&&&&&&&&&&&&"
+                f"could not find ids/hashes for {book_folder.name}, skipping"
             )
             continue
 
         # parse htm for matching image _links_ and text
-        story = parse_matching_images_and_captions_from_htmfile(book_htm)
-        logging.info(f"Parsed story with {len(story)} image/caption pairs")
+        image_caption_pairs = parse_matching_images_and_captions_from_htmfile(book_htm)
+        logging.info(f"Parsed htm with {len(image_caption_pairs)} image/caption pairs")
+
+        # check if the story has any mismatches
+        if story_has_image_caption_matching_issues(image_caption_pairs):
+            logging.warning(f"Some images seem to lack captions. Skipping.")
+            continue
+
+        successfully_parsed_books.append(book_folder.name)
+
+        # check if we can find ids/hashes for the images, and fix url quoting.
+        # Here's a fun one! In the HTML, the file is bird%20meeting.png ,
+        # but in the file system, and therefore in my json, it is bird meeting.png , with a space.
+        # So I guess when trying to find that file I gotta do something like https://stackoverflow.com/questions/16566069/url-decode-utf-8-in-python
+        image_caption_pairs = check_and_fix_image_caption_pairs(
+            image_caption_pairs=image_caption_pairs,
+            book_folder=book_folder,
+            ids_and_hashes=ids_and_hashes,
+        )
 
         # get the ids/hashes for image _files_
-        image_dicts = []
-        for image_file in image_files:
-            try:
-                hash = ids_and_hashes[book_folder.name][image_file.name]["hash"]
-                id = ids_and_hashes[book_folder.name][image_file.name]["id"]
-            except KeyError:
-                logging.warning(
-                    f"Could not find id/hash for {image_file.name} in {book_folder.name}. Calculating a new ID/Hash"
-                )
-                hash = precompute_file_uuids_and_hashes.calculate_hash_for_file(
-                    image_file
-                )
-                id = str(uuid.uuid4())
+        # image_dicts = []
+        # for image_file in image_files:
+        #     try:
+        #         hash = ids_and_hashes[book_folder.name][image_file.name]["hash"]
+        #         id = ids_and_hashes[book_folder.name][image_file.name]["id"]
+        #     except KeyError:
+        #         logging.warning(
+        #             f"Could not find id/hash for {image_file.name} in {book_folder.name}. Calculating a new ID/Hash"
+        #         )
+        #         hash = precompute_file_uuids_and_hashes.calculate_hash_for_file(
+        #             image_file
+        #         )
+        #         id = str(uuid.uuid4())
 
-            image_dict = initialize_dict_for_image_path(
-                image_path=image_file, precomputed_id=id
-            )
-            image_dicts.append(image_dict)
+        #     image_dict = initialize_dict_for_image_path(
+        #         image_path=image_file, precomputed_id=id
+        #     )
+        #     image_dicts.append(image_dict)
 
-        logging.debug(f"{image_dicts[0]}")
+        ##
+        # match images/captions from htm with precomputed hashes/ids,
+        # then initialize dicts for the images, the "annotations" (captions), and the "album"
 
+        vist_album_for_book = create_vist_album_for_book(
+            image_caption_pairs=image_caption_pairs,
+            book_folder=book_folder,
+            metadata_fin=metadata_fin,
+        )
+        bloom_albums.append(vist_album_for_book)
+
+        story_for_book = create_vist_story_for_book(
+            image_caption_pairs=image_caption_pairs,
+            book_folder=book_folder,
+            metadata_fin=metadata_fin,
+            ids_and_hashes=ids_and_hashes,
+            vist_album=vist_album_for_book,
+            book_htm=book_htm,
+        )
+
+        vist_images_for_book = create_vist_images_for_book(
+            image_caption_pairs=image_caption_pairs,
+            book_folder=book_folder,
+            metadata_fin=metadata_fin,
+            ids_and_hashes=ids_and_hashes,
+            vist_album=vist_album_for_book,
+        )
+
+        vist_annotations_for_book = create_vist_annotations_for_book(
+            image_caption_pairs=image_caption_pairs,
+            book_folder=book_folder,
+            metadata_fin=metadata_fin,
+            ids_and_hashes=ids_and_hashes,
+            vist_album=vist_album_for_book,
+            story=story_for_book,
+        )
+
+        bloom_images.extend(vist_images_for_book)
+
+        bloom_annotations.extend(vist_annotations_for_book)
+
+    logging.info(
+        f"successfully parsed: {len(successfully_parsed_books)} out of {len(book_folders)}"
+    )
+
+    bloom_vist_json = {
+        "albums": bloom_albums,
+        "images": bloom_images,
+        "annotations": bloom_annotations,
+    }
+    with open(args.out, "w") as outf:
+        logging.warning(f"writing results to {args.out}")
+        json.dump(bloom_vist_json, outf)
     # # sample_book = random.choice(book_folders)
 
     # sample_book = (
