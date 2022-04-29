@@ -8,10 +8,34 @@ import logging
 from bs4 import BeautifulSoup, PageElement
 import precompute_file_uuids_and_hashes
 from urllib.parse import unquote
-
+from tqdm import tqdm
+import datetime
 
 # https://stackoverflow.com/questions/4292029/how-to-get-a-list-of-file-extensions-for-a-general-file-type
 BLOOM_IMAGE_FORMATS = (".jpg", ".png")  # contentful images, excluding svg on purpose.
+
+# licenses I found by searching all meta.json files in bloom_downloads -CDL
+BLOOM_LICENSES_OBSERVED = [
+    "ask",
+    "cc0",
+    "cc-by",
+    "cc-by-nc",
+    "cc-by-nc-nd",
+    "cc-by-nc-sa",
+    "cc-by-nd",
+    "cc-by-sa",
+    "custom",
+    "null",
+]
+OPEN_LICENSES = [
+    "cc0",
+    "cc-by",
+    "cc-by-nc",
+    "cc-by-nc-nd",
+    "cc-by-nc-sa",
+    "cc-by-nd",
+    "cc-by-sa",
+]
 
 
 def initialize_dict_for_image_path(image_path: Path, precomputed_id: None):
@@ -205,6 +229,7 @@ def create_vist_album_for_book(image_caption_pairs, book_folder, metadata_fin):
         # "owner": "",  # TODO: album owner
         # "vist_label": "",  # TODO: album vist_label
         "id": str(uuid.uuid4()),
+        "license": metadata_fin["license"],  # NOTE: not in original VIST format
     }
     return vist_album
 
@@ -273,7 +298,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         img_caption_tuples.append((img_src, captions))
 
     logging.info(
-        f"From {htmfile_path.name}, extracted {len(img_caption_tuples)} tuples containing images and/or captions from numberedPage divs"
+        f"From '{htmfile_path.name}', extracted {len(img_caption_tuples)} tuples containing images and/or captions from numberedPage divs"
     )
 
     return img_caption_tuples
@@ -340,7 +365,7 @@ def find_book_htm(book_folder, metadata_fin):
 
     if not book_htm:
         logging.warning(
-            f"could not find htm matching title in metadata. Trying to find htm matching foldername"
+            f"could not find htm matching title '{metadata_fin['title']}' in metadata. Trying to find htm matching foldername"
         )
         potential_book_htm = (
             book_folder / f"{book_folder.name}.htm"
@@ -348,7 +373,16 @@ def find_book_htm(book_folder, metadata_fin):
         if potential_book_htm.is_file():
             book_htm = potential_book_htm
         else:
-            logging.warning(f"could not find htm matching foldername either")
+            logging.warning(
+                f"could not find htm matching '{book_folder.name}' either. Checking if there's only one htm file"
+            )
+            if len(htm_files) == 1:
+                book_htm = htm_files[0]
+            else:
+                logging.warning(
+                    f"There is not just one htm, there are {len(htm_files)}. Giving up. "
+                )
+
     return book_htm
 
 
@@ -359,9 +393,11 @@ def check_and_fix_image_caption_pairs(image_caption_pairs, book_folder, ids_and_
 
             unquote_image = unquote(image)
             if unquote_image != image:
-                print(f"{image} unquoted is {unquote_image}")
+                logging.debug(f"{image} unquoted is {unquote_image}")
             if unquote_image in ids_and_hashes[book_folder.name]:
                 image = unquote_image
+            else:
+                return None
         pair = (image, captions)
         image_caption_pairs_checked.append(pair)
     return image_caption_pairs_checked
@@ -379,6 +415,13 @@ def story_has_image_caption_matching_issues(image_caption_tuples: list):
             return True
 
     return False
+
+
+def license_is_valid(book_license, valid_licenses):
+    if book_license in valid_licenses:
+        return True
+    else:
+        return False
 
 
 if __name__ == "__main__":
@@ -422,7 +465,18 @@ if __name__ == "__main__":
         help=("Provide logging level. " "Example --log debug', default='warning'"),
     )
 
+    default_license_string = ",".join(OPEN_LICENSES)
+    parser.add_argument(
+        "--valid_licenses",
+        dest="valid_licenses",
+        help=f"comma-separated licenses, e.g. 'cc-by-sa,cc-by-nd' defaults to {default_license_string}",
+        type=str,
+        default=default_license_string,
+    )
+
     args = parser.parse_args()
+
+    valid_licenses = args.valid_licenses.split(",")
 
     levels = {
         "critical": logging.CRITICAL,
@@ -439,10 +493,16 @@ if __name__ == "__main__":
             f" -- must be one of: {' | '.join(levels.keys())}"
         )
 
-    logging.basicConfig(level=level, format="%(filename)s:%(lineno)d -  %(message)s")
+    logging.basicConfig(
+        filename=f"{datetime.datetime.now().replace(microsecond=0).isoformat()}_bloom_to_vist_out.log",
+        level=level,
+        format="%(filename)s:%(lineno)d -  %(message)s",
+    )
     logging.debug("debug messages visible")
     logging.info("info messages visible")
     logging.warning("warning messages visible")
+
+    logging.warning(f"VALID LICENSES: {valid_licenses}")
 
     with open(args.ids_and_hashes, "r") as ids_and_hashes_fp:
         ids_and_hashes = json.load(ids_and_hashes_fp)
@@ -456,9 +516,9 @@ if __name__ == "__main__":
     bloom_albums = []  # a list of dicts
     bloom_annotations = []  # a list of 1-element lists, each containing a dict.
 
-    for book_folder in book_folders:
+    for book_folder in tqdm(book_folders):
         logging.info("***************")
-        logging.info(f"parsing book {book_folder}")
+        logging.info(f"parsing book '{book_folder}'")
         book_files = list(book_folder.iterdir())
         logging.debug(f"there are {len(book_files)} files in the folder")
         image_files = get_image_files_in_folder(book_folder=book_folder)
@@ -469,14 +529,26 @@ if __name__ == "__main__":
             try:
                 metadata_fin = parse_metadata(mpath)
             except json.decoder.JSONDecodeError:
-                logging.warning(
-                    "could not parse meta.json. Skipping^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
-                )
+                logging.warning("could not parse meta.json. Skipping")
                 continue
         else:
             logging.warning("couldn't find meta.json. Skipping")
             continue
 
+        ###########################
+        # Check license.
+        book_license = metadata_fin["license"]
+
+        if license_is_valid(book_license, valid_licenses):
+            logging.debug(f"Checked license, and it is valid")
+        else:
+            logging.warning(
+                f"License {book_license} not in {args.valid_licenses}. Skipping."
+            )
+            continue
+
+        ###########################
+        # Find the book htm file
         book_htm = find_book_htm(book_folder, metadata_fin)
 
         if not book_htm:
@@ -519,6 +591,12 @@ if __name__ == "__main__":
             book_folder=book_folder,
             ids_and_hashes=ids_and_hashes,
         )
+        if image_caption_pairs is None:
+            # that means there was one we couldn't fix.
+            logging.warning(
+                f"There was an image we couldn't find the id for. Skipping."
+            )
+            continue
 
         # get the ids/hashes for image _files_
         # image_dicts = []
@@ -580,6 +658,8 @@ if __name__ == "__main__":
         bloom_images.extend(vist_images_for_book)
 
         bloom_annotations.extend(vist_annotations_for_book)
+
+        logging.info(f"Parsed {book_folder.name} successfully")
 
     logging.info(
         f"successfully parsed: {len(successfully_parsed_books)} out of {len(book_folders)}"
