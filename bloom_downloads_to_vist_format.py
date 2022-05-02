@@ -128,7 +128,7 @@ def create_vist_images_for_book(
             # "text": "",  # TODO: image text
             "album_id": vist_album["id"],  # TODO: image
             # "longitude": "-0.212688",  # TODO: image longitude
-            "url_o": f"{book_folder.name}/{image}",
+            "url_o": web_url,
             "local_image_path": local_image_path,
             # "secret": "81837e8e9e",  # TODO: image secret
             "media": "photo",
