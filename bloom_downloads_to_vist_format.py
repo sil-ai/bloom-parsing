@@ -7,7 +7,7 @@ import json
 import logging
 from bs4 import BeautifulSoup, PageElement
 import precompute_file_uuids_and_hashes
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse, quote_plus
 from tqdm import tqdm
 import datetime
 
@@ -38,42 +38,6 @@ OPEN_LICENSES = [
 ]
 
 
-def initialize_dict_for_image_path(image_path: Path, precomputed_id: None):
-    if precomputed_id is None:
-        id = str(uuid.uuid4())
-    else:
-        id = precomputed_id
-
-    image_dict = {
-        "datetaken": "",
-        "license": "",
-        "title": "",
-        "text": "",
-        "album_id": "",  # TODO: associate
-        "longitude": "0",
-        "url_o": str(image_path),
-        "secret": "",
-        "media": "photo",
-        "latitude": "0",
-        "id": id,
-        "tags": "",  # todo: pull from other data?
-    }
-    return image_dict
-
-    # "datetaken": "2007-07-02 03:54:30",
-    # "license": "5",
-    # "title": "Fourth of July prerequisite",
-    # "text": "",
-    # "album_id": "72157600601428727",
-    # "longitude": "0",
-    # "url_o": "https://farm2.staticflickr.com/1125/694227468_f6c433d7d8_o.jpg",
-    # "secret": "0745b37a62",
-    # "media": "photo",
-    # "latitude": "0",
-    # "id": "694227468",
-    # "tags": "family fun fireworks bbq fourthofjuly"
-
-
 def get_image_files_in_folder(book_folder):
     return [
         img for img in book_folder.iterdir() if img.name.endswith(BLOOM_IMAGE_FORMATS)
@@ -101,8 +65,30 @@ def create_vist_story_for_book(
     return story
 
 
+def calculate_web_url_given_local_path(s3_bucket, local_path):
+
+    # local_path should be something like book_folder_path.name / image_path.name, e.g. "My Face Tells a Story/1 Cover1.jpg"
+    # web_url should be something like "https://bloom-vist.s3.amazonaws.com/My+Face+Tells+a+Story/1+Cover1.jpg" aka using quote_plus
+    bucket_name = urlparse(
+        s3_bucket
+    ).hostname  # given "s3://bloom-vist" should give "bloom-vist"
+    web_url = f"https://{bucket_name}.s3.amazonaws.com"
+    for part in Path(local_path).parts:
+        web_url = web_url + "/" + quote_plus(part)
+
+    logging.debug(
+        f"for local path {local_path} and s3 bucket {s3_bucket}, calculated {web_url}"
+    )
+    return web_url
+
+
 def create_vist_images_for_book(
-    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album
+    image_caption_pairs,
+    book_folder,
+    metadata_fin,
+    ids_and_hashes,
+    vist_album,
+    s3_bucket,
 ):
     """
     VIST dataset had an array of image dictionaries called 'images'. 
@@ -130,6 +116,11 @@ def create_vist_images_for_book(
     for image, _ in image_caption_pairs:
         image_id = ids_and_hashes[book_folder.name][image]["id"]
 
+        local_image_path = f"{book_folder.name}/{image}"
+        web_url = calculate_web_url_given_local_path(
+            s3_bucket=s3_bucket, local_path=local_image_path
+        )
+
         image_dict = {
             # "datetaken": "", # TODO: image datetaken
             # "license": "1", # TODO: image license
@@ -137,7 +128,8 @@ def create_vist_images_for_book(
             # "text": "",  # TODO: image text
             "album_id": vist_album["id"],  # TODO: image
             # "longitude": "-0.212688",  # TODO: image longitude
-            "url_o": f"{book_folder.name}/{image}",  # TODO: image URL
+            "url_o": f"{book_folder.name}/{image}",
+            "local_image_path": local_image_path,
             # "secret": "81837e8e9e",  # TODO: image secret
             "media": "photo",
             # "latitude": "51.920449",  # TODO: image latitude
@@ -458,11 +450,15 @@ if __name__ == "__main__":
     )
 
     # https://stackoverflow.com/questions/57192387/how-to-set-logging-level-from-command-line
+    default_logging_level = "info"
     parser.add_argument(
         "-log",
         "--log",
-        default="warning",
-        help=("Provide logging level. " "Example --log debug', default='warning'"),
+        default="info",
+        help=(
+            f"Provide logging level. "
+            "Example --log debug', default='{default_logging_level}'"
+        ),
     )
 
     default_license_string = ",".join(OPEN_LICENSES)
@@ -472,6 +468,15 @@ if __name__ == "__main__":
         help=f"comma-separated licenses, e.g. 'cc-by-sa,cc-by-nd' defaults to {default_license_string}",
         type=str,
         default=default_license_string,
+    )
+
+    default_bucket = "s3://bloom-vist/"
+    parser.add_argument(
+        "--s3_bucket",
+        dest="s3_bucket",
+        help=f"s3 bucket where the images can be found, organized by book/image. Defaults to  {default_bucket}",
+        type=str,
+        default=default_bucket,
     )
 
     args = parser.parse_args()
@@ -598,26 +603,6 @@ if __name__ == "__main__":
             )
             continue
 
-        # get the ids/hashes for image _files_
-        # image_dicts = []
-        # for image_file in image_files:
-        #     try:
-        #         hash = ids_and_hashes[book_folder.name][image_file.name]["hash"]
-        #         id = ids_and_hashes[book_folder.name][image_file.name]["id"]
-        #     except KeyError:
-        #         logging.warning(
-        #             f"Could not find id/hash for {image_file.name} in {book_folder.name}. Calculating a new ID/Hash"
-        #         )
-        #         hash = precompute_file_uuids_and_hashes.calculate_hash_for_file(
-        #             image_file
-        #         )
-        #         id = str(uuid.uuid4())
-
-        #     image_dict = initialize_dict_for_image_path(
-        #         image_path=image_file, precomputed_id=id
-        #     )
-        #     image_dicts.append(image_dict)
-
         ##
         # match images/captions from htm with precomputed hashes/ids,
         # then initialize dicts for the images, the "annotations" (captions), and the "album"
@@ -644,6 +629,7 @@ if __name__ == "__main__":
             metadata_fin=metadata_fin,
             ids_and_hashes=ids_and_hashes,
             vist_album=vist_album_for_book,
+            s3_bucket=args.s3_bucket,
         )
 
         vist_annotations_for_book = create_vist_annotations_for_book(
