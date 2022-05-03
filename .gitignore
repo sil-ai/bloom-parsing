@@ -160,9 +160,12 @@ cython_debug/
 
 
 # Colin added this
+data/
 bloom_downloads*/
 small_test*
 credentials.json
 placeholders/
 old/
 .vscode/
+some_bloom_downloads_with_pictures_including_3_chuskits/
+logs/

@@ -38,7 +38,7 @@ def precompute_ids_and_hashes_for_dir_of_books(source_dir, output_file):
 
 def calculate_hash_for_file(bloom_file):
     """
-    Based on https://www.pythoncentral.io/hashing-files-with-python/
+    Based on https://www.pythoncentral.io/hashing-files-with-python/ 
     """
     md5_hasher = hashlib.md5()
     with open(bloom_file, "rb") as bloom_file_fd:
