@@ -10,6 +10,7 @@ import precompute_file_uuids_and_hashes
 from urllib.parse import unquote, urlparse, quote_plus
 from tqdm import tqdm
 import datetime
+import langcodes
 
 # https://stackoverflow.com/questions/4292029/how-to-get-a-list-of-file-extensions-for-a-general-file-type
 BLOOM_IMAGE_FORMATS = (".jpg", ".png")  # contentful images, excluding svg on purpose.
@@ -256,8 +257,8 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         tg_divs = page.find_all("div", class_="bloom-translationGroup")
 
         imgs = page.find_all("img")
-        logging.debug(f"found {len(imgs)} imgs in the page: {imgs}")
-        logging.debug(f"found {len(tg_divs)} translation groups in the page")
+        logging.warning(f"found {len(imgs)} imgs in the page: {imgs}")
+        logging.warning(f"found {len(tg_divs)} translation groups in the page")
         # turns out you sometimes have, like, imgs on their own page followed by a caption.
 
         # if len(imgs) != len(tg_divs):
@@ -282,7 +283,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
                     captions[key] = captions[key] + tg_div_captions[key]
 
             captions = dict(captions)
-            logging.debug(
+            logging.warning(
                 f"captions found in {len(tg_divs)} translationGroups: {captions}"
             )
         else:
@@ -311,22 +312,25 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
 
 
 def parse_translation_group(tg_div):
-    entry = {}
+    entry = defaultdict(str)
     subdivs = tg_div.find_all(
         "div", {"lang": True}  # finds subdivs with this attribute.
     )
     # return recursive_get_text(tg_div)
 
+    logging.debug(f"found subdivs in tg: {len(subdivs)}")
+
     for subdiv in subdivs:
+
         if (
             subdiv.has_attr("lang")
             and subdiv.get("lang") != "*"
             and subdiv.get("lang") != ""
             and subdiv.get("lang") != "z"  # always empty, not a valid code
         ):
-
+            subdiv_lang = subdiv.get("lang")
             p_elements = subdiv.findAll("p")
-            # logging.debug(f"found texts: {p_elements}")
+            logging.debug(f"found texts for {subdiv_lang}: {p_elements}")
 
             book_text = ""
             for p_element in p_elements:
@@ -335,7 +339,18 @@ def parse_translation_group(tg_div):
 
                 else:
                     book_text = p_element.get_text()
-            entry[subdiv.get("lang")] = book_text
+
+            if not p_elements:
+                subdiv_text = subdiv.get_text()
+                logging.debug(
+                    f"Couldn't find any <p>, trying to parse the subdiv directly. Found: {subdiv_text}"
+                )
+                book_text += subdiv_text
+
+            logging.debug(
+                f"Existing entry before adding {book_text}: {entry[subdiv_lang]}"
+            )
+            entry[subdiv_lang] = entry[subdiv_lang] + book_text
     return entry
 
 
@@ -499,13 +514,15 @@ if __name__ == "__main__":
         )
 
     logging.basicConfig(
-        filename=f"{datetime.datetime.now().replace(microsecond=0).isoformat()}_bloom_to_vist_out.log",
+        filename=f"logs/{datetime.datetime.now().replace(microsecond=0).isoformat()}_bloom_to_vist_out.log",
         level=level,
         format="%(filename)s:%(lineno)d -  %(message)s",
     )
     logging.debug("debug messages visible")
     logging.info("info messages visible")
     logging.warning("warning messages visible")
+    logging.error("error messages are visible")
+    logging.critical("error messages are visible")
 
     logging.warning(f"VALID LICENSES: {valid_licenses}")
 
@@ -655,6 +672,7 @@ if __name__ == "__main__":
         "albums": bloom_albums,
         "images": bloom_images,
         "annotations": bloom_annotations,
+        "utc_creation_date": str(datetime.datetime.utcnow()),
     }
     with open(args.out, "w") as outf:
         logging.warning(f"writing results to {args.out}")
