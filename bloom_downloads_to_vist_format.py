@@ -7,10 +7,14 @@ import json
 import logging
 from bs4 import BeautifulSoup, PageElement
 import precompute_file_uuids_and_hashes
-from urllib.parse import unquote, urlparse, quote_plus
+from urllib.parse import unquote, urlparse, quote_plus, unquote_plus
 from tqdm import tqdm
 import datetime
 import langcodes
+import csv
+
+# usage example: python bloom_downloads_to_vist_format.py data/bloom_downloads/ ./ids_and_hashes.json --out bloom_downloads_vist_filtered_by_license_with_web_urls_and_improved_subdiv_fallback_parsing_and_urls_from_aws_manifest_2022-05-09.json --log info
+
 
 # https://stackoverflow.com/questions/4292029/how-to-get-a-list-of-file-extensions-for-a-general-file-type
 BLOOM_IMAGE_FORMATS = (".jpg", ".png")  # contentful images, excluding svg on purpose.
@@ -118,9 +122,12 @@ def create_vist_images_for_book(
         image_id = ids_and_hashes[book_folder.name][image]["id"]
 
         local_image_path = f"{book_folder.name}/{image}"
-        web_url = calculate_web_url_given_local_path(
-            s3_bucket=s3_bucket, local_path=local_image_path
-        )
+
+        # web_url = calculate_web_url_given_local_path(
+        #     s3_bucket=s3_bucket, local_path=local_image_path
+        # ) # obsolete, we simply match the aws manifest above.
+
+        web_url = ids_and_hashes[book_folder.name][image]["web_url"]
 
         image_dict = {
             # "datetaken": "", # TODO: image datetaken
@@ -171,7 +178,6 @@ def create_vist_annotations_for_book(
     for image, captions in image_caption_pairs:
         image_id = ids_and_hashes[book_folder.name][image]["id"]
         album_id = vist_album["id"]
-        # print(captions)
 
         annotation = [
             {
@@ -245,7 +251,6 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
 
     # MAYBE: cross-reference with metadata?
     # booktitle = soup.find("title")
-    # print(f"book title: {booktitle.text}")
 
     divs = soup.findAll("div")
     # topics = soup.select()
@@ -295,20 +300,6 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
     )
 
     return img_caption_tuples
-
-
-# def recursive_get_text(element):
-
-#     print(f"parsing {element} for text")
-#     text = element.get_text()
-
-#     if text == "" and element.children:
-#         print(f"couldn't find text but there's kids, let's go down a level")
-#         for child in element.children:
-#             print(f" CHILD: {child}")
-#             text = text + recursive_get_text(child)
-
-#     return text
 
 
 def parse_translation_group(tg_div):
@@ -431,12 +422,39 @@ def license_is_valid(book_license, valid_licenses):
         return False
 
 
+def match_files_with_aws_urls(ids_and_hashes_dict, aws_manifest_csv):
+    logging.info(f"Matching IDs and hashes from using csv {aws_manifest_csv}")
+    manifest_items = []
+    with open(aws_manifest_csv, newline="") as csvfile:
+        csv_reader = csv.reader(csvfile)
+        for row in csv_reader:
+            manifest_items.append(row)
+
+    for bucket_name, file_key in manifest_items:
+        base_url = f"https://{bucket_name}.s3.amazonaws.com"
+        generated_url = f"{base_url}/{file_key}"
+        try:
+            folder, filename = file_key.split("/")
+        except ValueError:
+            logging.debug(
+                f"While trying to find aws URLs, no slashes in file_key {file_key}"
+            )
+
+            continue
+
+        try:
+            matching_item = ids_and_hashes_dict[folder][filename]
+        except KeyError:
+            folder = unquote_plus(folder)
+            filename = unquote_plus(filename)
+            matching_item = ids_and_hashes_dict[folder][filename]
+
+        matching_item["web_url"] = generated_url
+        matching_item["s3_key"] = file_key
+    return ids_and_hashes_dict
+
+
 if __name__ == "__main__":
-    bloom_vist = {
-        "en": {"images": [], "albums": [], "annotations": []},
-        "kyr": {"images": [], "albums": [], "annotations": []},
-        "hni": {"images": [], "albums": [], "annotations": []},
-    }
 
     parser = argparse.ArgumentParser(
         description="Take bloom downloads and output SIS JSON"
@@ -494,6 +512,15 @@ if __name__ == "__main__":
         default=default_bucket,
     )
 
+    default_aws_manifest = "./aws_manifest.csv"
+    parser.add_argument(
+        "--aws_manifest_csv",
+        dest="aws_manifest_csv",
+        help=f"manifest.csv from s3 bucket. Defaults to {default_aws_manifest}",
+        type=str,
+        default=default_aws_manifest,
+    )
+
     args = parser.parse_args()
 
     valid_licenses = args.valid_licenses.split(",")
@@ -528,6 +555,10 @@ if __name__ == "__main__":
 
     with open(args.ids_and_hashes, "r") as ids_and_hashes_fp:
         ids_and_hashes = json.load(ids_and_hashes_fp)
+
+    ids_and_hashes = match_files_with_aws_urls(
+        ids_and_hashes_dict=ids_and_hashes, aws_manifest_csv=args.aws_manifest_csv
+    )
 
     bloom_downloads = args.source
 
