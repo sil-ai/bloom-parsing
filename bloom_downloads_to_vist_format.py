@@ -198,7 +198,9 @@ def create_vist_annotations_for_book(
     return annotations
 
 
-def create_vist_album_for_book(image_caption_pairs, book_folder, metadata_fin):
+def create_vist_album_for_book(
+    image_caption_pairs, book_folder, metadata_fin, htm_book_metadata
+):
 
     # Took the following from original VIST
     # example_album = {
@@ -217,7 +219,7 @@ def create_vist_album_for_book(image_caption_pairs, book_folder, metadata_fin):
     # }
     vist_album = {
         # "description": "",  # TODO: album description
-        "title": f"{book_folder.name}",  # todo: set album title from metatada?
+        "title": f"{book_folder.name}",  # todo: set album title from metaada?
         # "farm": "",  # TODO: album farm
         # "date_update": "",  # TODO: album date_update
         # "primary": "",  # TODO: album primary
@@ -229,8 +231,55 @@ def create_vist_album_for_book(image_caption_pairs, book_folder, metadata_fin):
         # "vist_label": "",  # TODO: album vist_label
         "id": str(uuid.uuid4()),
         "license": metadata_fin["license"],  # NOTE: not in original VIST format
+        "metadata_from_original_json": metadata_fin,
+        "metadata_from_htm_file": htm_book_metadata,
     }
     return vist_album
+
+
+def parse_book_htm_for_metadata(book_htm):
+
+    with open(book_htm) as file:
+        page = file.read()
+
+    soup = BeautifulSoup(page, "html.parser")
+
+    book_htm_metadata = {}
+
+    metas = soup.find_all("meta")
+    for meta in metas:  # <class 'bs4.element.Tag'>
+
+        # print(meta.get_attribute_list())
+        if meta.has_attr("name") and meta.has_attr("content"):
+
+            # print(meta["content"])
+
+            book_htm_metadata[meta.get("name")] = meta.get("content")
+
+    # https://www.geeksforgeeks.org/extract-json-from-html-using-beautifulsoup-in-python/
+    book_htm_metadata["bloomDataDiv"] = {}
+    book_data = soup.find("div", id="bloomDataDiv")
+    book_htm_metadata["bloomDataDiv"]["raw_html"] = book_data.text
+
+    book_data.find_all("div", attrs={"book-data": True})
+    for item in book_data.find_all("div", attrs={"data-book": True}):
+        # bs4.element.Tag.attrs
+        # print("lksdfjlkdsjf")
+        meta_item = {}
+        metadata_name = item.get("data-book")
+        # print(f"{metadata_name}")
+        # print(f"\t{item.attrs}")
+        # print(f"\t{item.text}")
+
+        for attr_key, attr_value in item.attrs.items():
+            # print(f"\t\t{attr_key}, {attr_value}")
+            if attr_key == "data-book":
+                meta_item[metadata_name] = item.text
+            else:
+                meta_item[attr_key] = attr_value
+        book_htm_metadata["bloomDataDiv"][metadata_name] = meta_item
+
+    return book_htm_metadata
 
 
 def parse_matching_images_and_captions_from_htmfile(htmfile_path):
@@ -540,8 +589,14 @@ if __name__ == "__main__":
             f" -- must be one of: {' | '.join(levels.keys())}"
         )
 
+    default_logging_folder = Path.cwd() / "logs"
+    default_logging_folder.mkdir(exist_ok=True, parents=True)
+    default_logging_path = (
+        default_logging_folder
+        / f"{datetime.datetime.now().replace(microsecond=0).isoformat()}_bloom_to_vist_out.log"
+    )
     logging.basicConfig(
-        filename=f"logs/{datetime.datetime.now().replace(microsecond=0).isoformat()}_bloom_to_vist_out.log",
+        filename=default_logging_path,
         level=level,
         format="%(filename)s:%(lineno)d -  %(message)s",
     )
@@ -624,6 +679,8 @@ if __name__ == "__main__":
             )
             continue
 
+        htm_book_metadata = parse_book_htm_for_metadata(book_htm)
+
         # parse htm for matching image _links_ and text
         image_caption_pairs = parse_matching_images_and_captions_from_htmfile(book_htm)
         logging.info(f"Parsed htm with {len(image_caption_pairs)} image/caption pairs")
@@ -659,6 +716,7 @@ if __name__ == "__main__":
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
             metadata_fin=metadata_fin,
+            htm_book_metadata=htm_book_metadata,
         )
         bloom_albums.append(vist_album_for_book)
 
