@@ -419,11 +419,45 @@ def parse_translation_group(tg_div):
     return entry
 
 
+# fields to drop from the metadata
+drop_fields = [
+    "a11y_NoEssentialInfoByColor",
+    "a11y_NoTextIncludedInAnyImages",
+    "epub_HowToPublishImageDescriptions",
+    "epub_RemoveFontStyles",
+    "bloomdVersion",
+    # "experimental", # used in lmset later.
+    "baseUrl",
+    "bookOrder",
+    "downloadSource",
+    "formatVersion",
+    "allowUploadingToBloomLibrary",
+    "bookletMakingIsAppropriate",
+    # "LeveledReaderTool", # might be useful
+    # "LeveledReaderLevel", # might be useful
+    "xmatterName",
+    "uploader",
+    "tools",
+    "currentTool",
+    "toolboxIsOpen",
+    "hazards",
+    "a11yFeatures",
+    "a11yLevel",
+    "a11yCertifier",
+    "internetLimits",
+    "use-original-copyright",
+]
+
+
 def parse_metadata(mpath):
 
     with open(mpath) as metadata:
         metadata = json.load(metadata)
 
+        # Clean out unwanted fields
+    for field in drop_fields:
+        if field in metadata.keys():
+            del metadata[field]
     return metadata
 
 
@@ -559,7 +593,7 @@ def remove_languages_with_mostly_whitespace(image_caption_pairs, len_threshold=5
     langs_to_drop = list(set(langs_to_drop))
     if langs_to_drop:
         logging.warning(
-            f"Dropping the following languages, which had less than {len_threshold} characters after stripping in the whole caption set: {langs_to_drop}"
+            f"Dropping the following languages, which had less than {len_threshold} characters after stripping in the whole translation caption set: {langs_to_drop}"
         )
 
     fixed_pairs = []
