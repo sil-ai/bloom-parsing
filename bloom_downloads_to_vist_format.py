@@ -336,8 +336,8 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         tg_divs = page.find_all("div", class_="bloom-translationGroup")
 
         imgs = page.find_all("img")
-        logging.warning(f"found {len(imgs)} imgs in the page: {imgs}")
-        logging.warning(f"found {len(tg_divs)} translation groups in the page")
+        logging.debug(f"found {len(imgs)} imgs in the page: {imgs}")
+        logging.debug(f"found {len(tg_divs)} translation groups in the page")
         # turns out you sometimes have, like, imgs on their own page followed by a caption.
 
         # if len(imgs) != len(tg_divs):
@@ -362,7 +362,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
                     captions[key] = captions[key] + tg_div_captions[key]
 
             captions = dict(captions)
-            logging.warning(
+            logging.debug(
                 f"captions found in {len(tg_divs)} translationGroups: {captions}"
             )
         else:
@@ -458,7 +458,9 @@ def find_book_htm(book_folder, metadata_fin):
     return book_htm
 
 
-def check_and_fix_image_caption_pairs(image_caption_pairs, book_folder, ids_and_hashes):
+def check_and_fix_image_caption_pairs_html_quoting(
+    image_caption_pairs, book_folder, ids_and_hashes
+):
     image_caption_pairs_checked = []
     for image, captions in image_caption_pairs:
         if image not in ids_and_hashes[book_folder.name]:
@@ -526,6 +528,52 @@ def match_files_with_aws_urls(ids_and_hashes_dict, aws_manifest_csv):
         matching_item["web_url"] = generated_url
         matching_item["s3_key"] = file_key
     return ids_and_hashes_dict
+
+
+def strip_whitespace_from_around_captions(image_caption_pairs):
+    stripped_image_caption_pairs = []
+    for image, caption_dict in image_caption_pairs:
+        for lang in caption_dict:
+            caption = caption_dict[lang]
+            caption_dict[lang] = caption.strip()
+
+        stripped_image_caption_pair = (image, caption_dict)
+        stripped_image_caption_pairs.append(stripped_image_caption_pair)
+    return stripped_image_caption_pairs
+
+
+def remove_languages_with_mostly_whitespace(image_caption_pairs, len_threshold=5):
+    lang_captions = defaultdict(list)
+    for image, caption_dict in image_caption_pairs:
+
+        for lang in caption_dict:
+            caption = caption_dict[lang]
+            lang_captions[lang].append(caption)
+
+    langs_to_drop = []
+    for lang in lang_captions:
+        captions = lang_captions[lang]
+        if len("".join(captions)) < len_threshold:
+            langs_to_drop.append(lang)
+
+    langs_to_drop = list(set(langs_to_drop))
+    if langs_to_drop:
+        logging.warning(
+            f"Dropping the following languages, which had less than {len_threshold} characters after stripping in the whole caption set: {langs_to_drop}"
+        )
+
+    fixed_pairs = []
+    for image, caption_dict in image_caption_pairs:
+        fixed_caption_dict = {}
+        for lang in caption_dict:
+
+            if lang not in langs_to_drop:
+                fixed_caption_dict[lang] = caption_dict[lang]
+
+        fixed_pair = (image, fixed_caption_dict)
+        fixed_pairs.append(fixed_pair)
+
+    return fixed_pairs
 
 
 if __name__ == "__main__":
@@ -726,11 +774,20 @@ if __name__ == "__main__":
         # Here's a fun one! In the HTML, the file is bird%20meeting.png ,
         # but in the file system, and therefore in my json, it is bird meeting.png , with a space.
         # So I guess when trying to find that file I gotta do something like https://stackoverflow.com/questions/16566069/url-decode-utf-8-in-python
-        image_caption_pairs = check_and_fix_image_caption_pairs(
+        image_caption_pairs = check_and_fix_image_caption_pairs_html_quoting(
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
             ids_and_hashes=ids_and_hashes,
         )
+
+        image_caption_pairs = strip_whitespace_from_around_captions(
+            image_caption_pairs=image_caption_pairs
+        )
+
+        image_caption_pairs = remove_languages_with_mostly_whitespace(
+            image_caption_pairs=image_caption_pairs
+        )
+
         if image_caption_pairs is None:
             # that means there was one we couldn't fix.
             logging.warning(
