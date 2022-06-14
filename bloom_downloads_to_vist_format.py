@@ -617,8 +617,9 @@ if __name__ == "__main__":
 
     bloom_downloads = args.source
 
+    # Each Bloom book is in its own folder. Ideally.
     book_folders = [subdir for subdir in bloom_downloads.iterdir() if subdir.is_dir()]
-    successfully_parsed_books = []
+    successfully_parsed_books = []  # used to calculate statistics later.
 
     bloom_images = []  # a list of dicts
     bloom_albums = []  # a list of dicts
@@ -708,10 +709,13 @@ if __name__ == "__main__":
             )
             continue
 
-        ##
+        ##############################
         # match images/captions from htm with precomputed hashes/ids,
         # then initialize dicts for the images, the "annotations" (captions), and the "album"
 
+        ## ALBUMS:
+        # in VIST, albums are collections or sets of images, in some sequential order.
+        # They don't have associated captions, those come later in "stories"
         vist_album_for_book = create_vist_album_for_book(
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
@@ -720,6 +724,13 @@ if __name__ == "__main__":
         )
         bloom_albums.append(vist_album_for_book)
 
+        ## STORIES:
+        # Stories are a concept that shows up in VIST, separate from "album."
+        # Basically an "album" is a set of pictures,
+        # then a volunteer comes and begins adding captions to that set.
+        # Together the images and captions form a "story".
+        # You can have multiple "stories" told about each album of pictures.
+        # Each of these has its own unique ID.
         story_for_book = create_vist_story_for_book(
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
@@ -729,6 +740,9 @@ if __name__ == "__main__":
             book_htm=book_htm,
         )
 
+        ## IMAGES
+        # In VIST, we've got an "image", hosted on flickr.
+        # Each of them it has a unique ID, referenced in
         vist_images_for_book = create_vist_images_for_book(
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
@@ -738,6 +752,9 @@ if __name__ == "__main__":
             s3_bucket=args.s3_bucket,
         )
 
+        ## ANNOTATIONS
+        # In VIST, these are the captions added by a volunteer, each associated with some image.
+        # You can often have different captions added by different volunteers.
         vist_annotations_for_book = create_vist_annotations_for_book(
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
@@ -766,6 +783,7 @@ if __name__ == "__main__":
     with open(args.out, "w") as outf:
         logging.warning(f"writing results to {args.out}")
         json.dump(bloom_vist_json, outf)
+
     # # sample_book = random.choice(book_folders)
 
     # sample_book = (
