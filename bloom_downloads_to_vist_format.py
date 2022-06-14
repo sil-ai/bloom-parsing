@@ -49,16 +49,21 @@ def get_image_files_in_folder(book_folder):
     ]
 
 
-def create_vist_story_for_book(
+def create_vist_stories_for_book(
     image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album, book_htm
 ):
     """
     'story' is when you've got captions for an album. in VIST you might have had an album of images,
     and then have that album get turned into a story by volunteers more than once. 
-    So for one album you might have multiple stories. In our case we assume one story per htm. 
-    Thus we can safely use the uuid of the htm to be our story ID. 
-    If we run into multiple 'stories' per book we'd have to rethink this, 
+    So for one album you might have multiple stories. 
+
+    We originally wrote this code here assuming there was one "story" per book, but
+    in fact have multiple "stories" per htm, one per language. TODO: fix this problem. 
     """
+    # stories = defaultdict(list)
+    # for image, caption_dict in image_caption_pairs:
+    #     for lang in caption_dict.keys():
+    #         lang_caption =
     story_id = ids_and_hashes[book_folder.name][book_htm.name][
         "id"
     ]  # it is a uuid, it is unique to the story. #TODO: uuid3 for story ID?
@@ -219,7 +224,7 @@ def create_vist_album_for_book(
     # }
     vist_album = {
         # "description": "",  # TODO: album description
-        "title": f"{book_folder.name}",  # todo: set album title from metaada?
+        "title": f"{book_folder.name}",  # todo: set album title from metadata?
         # "farm": "",  # TODO: album farm
         # "date_update": "",  # TODO: album date_update
         # "primary": "",  # TODO: album primary
@@ -229,7 +234,7 @@ def create_vist_album_for_book(
         # "secret": "",  # TODO: album secret
         # "owner": "",  # TODO: album owner
         # "vist_label": "",  # TODO: album vist_label
-        "id": str(uuid.uuid4()),
+        "id": metadata_fin["bookInstanceId"],
         "license": metadata_fin["license"],  # NOTE: not in original VIST format
         "metadata_from_original_json": metadata_fin,
         "metadata_from_htm_file": htm_book_metadata,
@@ -249,10 +254,7 @@ def parse_book_htm_for_metadata(book_htm):
     metas = soup.find_all("meta")
     for meta in metas:  # <class 'bs4.element.Tag'>
 
-        # print(meta.get_attribute_list())
         if meta.has_attr("name") and meta.has_attr("content"):
-
-            # print(meta["content"])
 
             book_htm_metadata[meta.get("name")] = meta.get("content")
 
@@ -264,12 +266,9 @@ def parse_book_htm_for_metadata(book_htm):
     book_data.find_all("div", attrs={"book-data": True})
     for item in book_data.find_all("div", attrs={"data-book": True}):
         # bs4.element.Tag.attrs
-        # print("lksdfjlkdsjf")
+
         meta_item = {}
         metadata_name = item.get("data-book")
-        # print(f"{metadata_name}")
-        # print(f"\t{item.attrs}")
-        # print(f"\t{item.text}")
 
         for attr_key, attr_value in item.attrs.items():
             # print(f"\t\t{attr_key}, {attr_value}")
@@ -693,6 +692,10 @@ if __name__ == "__main__":
 
         successfully_parsed_books.append(book_folder.name)
 
+        ##############################
+        # match images/captions from htm with precomputed hashes/ids,
+        # then initialize dicts for the images, the "annotations" (captions), and the "album"
+
         # check if we can find ids/hashes for the images, and fix url quoting.
         # Here's a fun one! In the HTML, the file is bird%20meeting.png ,
         # but in the file system, and therefore in my json, it is bird meeting.png , with a space.
@@ -709,10 +712,6 @@ if __name__ == "__main__":
             )
             continue
 
-        ##############################
-        # match images/captions from htm with precomputed hashes/ids,
-        # then initialize dicts for the images, the "annotations" (captions), and the "album"
-
         ## ALBUMS:
         # in VIST, albums are collections or sets of images, in some sequential order.
         # They don't have associated captions, those come later in "stories"
@@ -722,7 +721,6 @@ if __name__ == "__main__":
             metadata_fin=metadata_fin,
             htm_book_metadata=htm_book_metadata,
         )
-        bloom_albums.append(vist_album_for_book)
 
         ## STORIES:
         # Stories are a concept that shows up in VIST, separate from "album."
@@ -731,7 +729,8 @@ if __name__ == "__main__":
         # Together the images and captions form a "story".
         # You can have multiple "stories" told about each album of pictures.
         # Each of these has its own unique ID.
-        story_for_book = create_vist_story_for_book(
+        # TODO: fix the problem below, we ought to have one story-id per template/language combination I think.
+        story_for_book = create_vist_stories_for_book(
             image_caption_pairs=image_caption_pairs,
             book_folder=book_folder,
             metadata_fin=metadata_fin,
@@ -764,8 +763,8 @@ if __name__ == "__main__":
             story=story_for_book,
         )
 
+        bloom_albums.append(vist_album_for_book)
         bloom_images.extend(vist_images_for_book)
-
         bloom_annotations.extend(vist_annotations_for_book)
 
         logging.info(f"Parsed {book_folder.name} successfully")
@@ -780,6 +779,9 @@ if __name__ == "__main__":
         "annotations": bloom_annotations,
         "utc_creation_date": str(datetime.datetime.utcnow()),
     }
+
+    # bloom_vist_json =
+
     with open(args.out, "w") as outf:
         logging.warning(f"writing results to {args.out}")
         json.dump(bloom_vist_json, outf)
