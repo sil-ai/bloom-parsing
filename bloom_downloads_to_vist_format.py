@@ -49,43 +49,43 @@ def get_image_files_in_folder(book_folder):
     ]
 
 
-def create_vist_stories_for_book(
-    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album, book_htm
-):
-    """
-    'story' is when you've got captions for an album. in VIST you might have had an album of images,
-    and then have that album get turned into a story by volunteers more than once. 
-    So for one album you might have multiple stories. 
+# def create_vist_stories_for_book(
+#     image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album, book_htm
+# ):
+#     """
+#     'story' is when you've got captions for an album. in VIST you might have had an album of images,
+#     and then have that album get turned into a story by volunteers more than once.
+#     So for one album you might have multiple stories.
 
-    We originally wrote this code here assuming there was one "story" per book, but
-    in fact have multiple "stories" per htm, one per language. TODO: fix this problem. 
+#     We originally wrote this code here assuming there was one "story" per book, but
+#     in fact have multiple "stories" per htm, one per language. TODO: fix this problem.
 
-    Each bloom "translation" will be given a story id
-    """
-    # dictionary indexed by language code. each book/translation combo is a story.
-    story_ids = {}
+#     Each bloom "translation" will be given a story id
+#     """
+#     # dictionary indexed by language code. each book/translation combo is a story.
+#     story_ids = {}
 
-    image_caption_pairs_with_story_ids = []
-    for image, caption_dict in image_caption_pairs:
-        print(caption_dict)
+#     image_caption_pairs_with_story_ids = []
+#     for image, caption_dict in image_caption_pairs:
+#         print(caption_dict)
 
-        # update the caption dict, which currently just contains "text", with the story ID
-        for lang, text in caption_dict.items():
-            if lang not in story_ids.keys():
-                story_ids[lang] = str(uuid.uuid4())
-            caption_dict[lang]["story_id"] = story_ids[lang]
+#         # update the caption dict, which currently just contains "text", with the story ID
+#         for lang, text in caption_dict.items():
+#             if lang not in story_ids.keys():
+#                 story_ids[lang] = str(uuid.uuid4())
+#             caption_dict[lang]["story_id"] = story_ids[lang]
 
-        image_caption_pairs_with_story_ids.append(image, caption_dict)
+#         image_caption_pairs_with_story_ids.append(image, caption_dict)
 
-    # story_id = ids_and_hashes[book_folder.name][book_htm.name][
-    #     "id"
-    # ]  # it is a uuid, it is unique to the story. #TODO: uuid3 for story ID?
-    # image_caption_pairs_with_story_ids = {
-    #     "story_id": story_id,
-    #     "image_caption_pairs": image_caption_pairs,
-    # }
+#     # story_id = ids_and_hashes[book_folder.name][book_htm.name][
+#     #     "id"
+#     # ]  # it is a uuid, it is unique to the story. #TODO: uuid3 for story ID?
+#     # image_caption_pairs_with_story_ids = {
+#     #     "story_id": story_id,
+#     #     "image_caption_pairs": image_caption_pairs,
+#     # }
 
-    return stories_dict
+#     return stories_dict
 
 
 def calculate_web_url_given_local_path(s3_bucket, local_path):
@@ -735,6 +735,13 @@ if __name__ == "__main__":
             # that means there was one we couldn't fix.
             logging.warning(
                 f"There was an image we couldn't find the id for. Skipping."
+            )
+            continue
+
+        if len(image_caption_pairs) == 0:
+            # that means there was one we couldn't fix.
+            logging.warning(
+                f"Somehow the image/caption pairs is length zero. Skipping."
             )
             continue
 
