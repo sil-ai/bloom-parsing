@@ -59,20 +59,33 @@ def create_vist_stories_for_book(
 
     We originally wrote this code here assuming there was one "story" per book, but
     in fact have multiple "stories" per htm, one per language. TODO: fix this problem. 
-    """
-    # stories = defaultdict(list)
-    # for image, caption_dict in image_caption_pairs:
-    #     for lang in caption_dict.keys():
-    #         lang_caption =
-    story_id = ids_and_hashes[book_folder.name][book_htm.name][
-        "id"
-    ]  # it is a uuid, it is unique to the story. #TODO: uuid3 for story ID?
-    story = {
-        "story_id": story_id,
-        "image_caption_pairs": image_caption_pairs,
-    }
 
-    return story
+    Each bloom "translation" will be given a story id
+    """
+    # dictionary indexed by language code. each book/translation combo is a story.
+    story_ids = {}
+
+    image_caption_pairs_with_story_ids = []
+    for image, caption_dict in image_caption_pairs:
+        print(caption_dict)
+
+        # update the caption dict, which currently just contains "text", with the story ID
+        for lang, text in caption_dict.items():
+            if lang not in story_ids.keys():
+                story_ids[lang] = str(uuid.uuid4())
+            caption_dict[lang]["story_id"] = story_ids[lang]
+
+        image_caption_pairs_with_story_ids.append(image, caption_dict)
+
+    # story_id = ids_and_hashes[book_folder.name][book_htm.name][
+    #     "id"
+    # ]  # it is a uuid, it is unique to the story. #TODO: uuid3 for story ID?
+    # image_caption_pairs_with_story_ids = {
+    #     "story_id": story_id,
+    #     "image_caption_pairs": image_caption_pairs,
+    # }
+
+    return stories_dict
 
 
 def calculate_web_url_given_local_path(s3_bucket, local_path):
@@ -155,7 +168,7 @@ def create_vist_images_for_book(
 
 
 def create_vist_annotations_for_book(
-    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album, story
+    image_caption_pairs, book_folder, metadata_fin, ids_and_hashes, vist_album,
 ):
     # Copied from original VIST test.story-in-sequence.json
     # example_annotations = {
@@ -178,26 +191,39 @@ def create_vist_annotations_for_book(
     # }
 
     # annotations is a list of lists, of dicts. Each annotation is a 1-element list.
-
     annotations = []
+
+    story_ids_for_book = {}  # one per translation
     for image, captions in image_caption_pairs:
         image_id = ids_and_hashes[book_folder.name][image]["id"]
         album_id = vist_album["id"]
 
-        annotation = [
-            {
-                # "original_text": "The local parish holds a craft show each year.", # TODO: annotation original_text
-                "album_id": album_id,
-                "photo_flickr_id": image_id,  # TODO: annotation photo_flickr_id
-                # "setting": "first-2-pick-and-tell", # TODO: annotation setting
-                # "worker_id": "FJROI8NWDRIPAM1", # TODO: annotation worker_id
-                "story_id": story["story_id"],
-                # "tier": "story-in-sequence",  # TODO: tier
-                # "worker_arranged_photo_order": 0, # TODO: worker_arranged_photo_order
-                "text": captions,  # NOTE: this is different than VIST format!
-                # "storylet_id": "227650", # TODO: annotation storylet id
-            }
-        ]
+        for lang in captions:
+            if lang not in story_ids_for_book.keys():
+                story_ids_for_book[lang] = str(uuid.uuid4())
+            story_id = story_ids_for_book[lang]
+
+            # lots of MY downstream code expects a dictionary with the key being the langid.
+            # but original VIST does not want it.
+            # we could also just add a lang field?
+            # Also had to edit bloom-vist and bloom-captioning loading scripts.
+            # caption = {lang: captions[lang]}
+
+            annotation = [
+                {
+                    # "original_text": "The local parish holds a craft show each year.", # TODO: annotation original_text
+                    "album_id": album_id,
+                    "photo_flickr_id": image_id,  # TODO: annotation photo_flickr_id
+                    # "setting": "first-2-pick-and-tell", # TODO: annotation setting
+                    # "worker_id": "FJROI8NWDRIPAM1", # TODO: annotation worker_id
+                    "story_id": story_id,
+                    # "tier": "story-in-sequence",  # TODO: tier
+                    # "worker_arranged_photo_order": 0, # TODO: worker_arranged_photo_order
+                    # "storylet_id": "227650"
+                    "text": captions[lang],  # original VIST format
+                    "lang": lang,  # NOT IN ORIGINAL VIST
+                }
+            ]
 
         annotations.append(annotation)
     return annotations
@@ -722,23 +748,6 @@ if __name__ == "__main__":
             htm_book_metadata=htm_book_metadata,
         )
 
-        ## STORIES:
-        # Stories are a concept that shows up in VIST, separate from "album."
-        # Basically an "album" is a set of pictures,
-        # then a volunteer comes and begins adding captions to that set.
-        # Together the images and captions form a "story".
-        # You can have multiple "stories" told about each album of pictures.
-        # Each of these has its own unique ID.
-        # TODO: fix the problem below, we ought to have one story-id per template/language combination I think.
-        story_for_book = create_vist_stories_for_book(
-            image_caption_pairs=image_caption_pairs,
-            book_folder=book_folder,
-            metadata_fin=metadata_fin,
-            ids_and_hashes=ids_and_hashes,
-            vist_album=vist_album_for_book,
-            book_htm=book_htm,
-        )
-
         ## IMAGES
         # In VIST, we've got an "image", hosted on flickr.
         # Each of them it has a unique ID, referenced in
@@ -751,6 +760,23 @@ if __name__ == "__main__":
             s3_bucket=args.s3_bucket,
         )
 
+        ## STORIES:
+        # Stories are a concept that shows up in VIST, separate from "album."
+        # Basically an "album" is a set of pictures,
+        # then a volunteer comes and begins adding captions to that set.
+        # Together the images and captions form a "story".
+        # You can have multiple "stories" told about each album of pictures.
+        # Each of these has its own unique ID.
+        # We effectively have one "story" per book, one per translation.
+        # stories_for_book = create_vist_stories_for_book(
+        #     image_caption_pairs=image_caption_pairs,
+        #     book_folder=book_folder,
+        #     metadata_fin=metadata_fin,
+        #     ids_and_hashes=ids_and_hashes,
+        #     vist_album=vist_album_for_book,
+        #     book_htm=book_htm,
+        # )
+
         ## ANNOTATIONS
         # In VIST, these are the captions added by a volunteer, each associated with some image.
         # You can often have different captions added by different volunteers.
@@ -760,7 +786,6 @@ if __name__ == "__main__":
             metadata_fin=metadata_fin,
             ids_and_hashes=ids_and_hashes,
             vist_album=vist_album_for_book,
-            story=story_for_book,
         )
 
         bloom_albums.append(vist_album_for_book)
