@@ -110,6 +110,9 @@ def calculate_image_hash_for_file(bloom_file):
     except UnidentifiedImageError:
         # print(f"couldn't parse {bloom_file}")
         return None
+    except OSError:
+        # image is truncated or corrupted.
+        return None
 
 
 def calculate_hash_for_file(bloom_file):
