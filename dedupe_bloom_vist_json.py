@@ -89,3 +89,6 @@ if __name__ == "__main__":
     updated_bloom_vist_dict = collapse_duplicate_albums_and_stories(
         bloom_vist_dict, ids_and_hashes_dict
     )
+
+    with open("bloom_vist_june14_deduped.json", "w") as fixed_file:
+        json.dump(updated_bloom_vist_dict, fixed_file)
