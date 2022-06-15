@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 from collections import defaultdict
 from pathlib import Path
@@ -631,23 +632,71 @@ def remove_languages_with_mostly_whitespace(image_caption_pairs, len_threshold=5
     return fixed_pairs
 
 
-def collapse_duplicate_albums(bloom_vist_json, ids_and_hashes):
+def dedupe_based_on_captions(bloom_vist_json):
+    """
+    UNFINISHED CODE - find stories that have the same captions 
+    """
+    return bloom_vist_json
+    stories = []
+    for single_element_list in bloom_vist_json["annotations"]:
+        annotation = single_element_list[0]
+
+
+def collapse_albums_based_on_image_similarity(bloom_vist_json, ids_and_hashes):
+    return bloom_vist_json
+
+
+def collapse_duplicate_albums_based_on_lineage_and_language(
+    bloom_vist_json, ids_and_hashes
+):
+    """
+    UNFINISHED CODE - tried to combine albums with the same language together by looking through bookLineage
+    """
+    return bloom_vist_json
 
     albums = bloom_vist_json["albums"]
 
     albums_by_id = {}
 
-    for album in albums:
+    lineage_clusters = []
 
+    # first add them all to the dictionary for convenient access.
+    for album in albums:
+        album_id = album["id"]
+
+        albums_by_id[album_id] = album
+        albums_by_id[album_id]["books_in_lineage"] = album[
+            "metadata_from_original_json"
+        ]["bookLineage"].split()
+
+        annotations_for_book = []
+        for annotation in bloom_vist_json["annotations"]:
+            if annotation[0]["album_id"] == album_id:
+                annotations_for_book.append(annotation)
+
+        albums_by_id["annotations_for_book"] = annotations_for_book
+
+    # now we get all the ones in the same lineage together
+    # how the heck do we do that.
+    for album in albums:
         album_id = album["id"]
         album_title = album["title"]
-        albums_by_id[album_id] = album
-
-        books_in_lineage = album["metadata_from_original_json"]["bookLineage"]
+        books_in_lineage = album["metadata_from_original_json"]["bookLineage"].split()
         print(
             f"For album with title {album_title}, there are these books in the lineage: {books_in_lineage}"
         )
 
+        my_lineage_cluster = books_in_lineage.append(album_id)
+        my_lineage_cluster = list(set(my_lineage_cluster))
+
+        for lineage_cluster in lineage_clusters:
+            intersection = set(lineage_cluster).intersection(set(my_lineage_cluster))
+            if intersection:
+                lineage_cluster.extend(my_lineage_cluster)
+
+        lineage_clusters.append(my_lineage_cluster)
+
+    print(lineage_clusters)
     return bloom_vist_json
 
 
@@ -944,7 +993,15 @@ if __name__ == "__main__":
         "utc_creation_date": str(datetime.datetime.utcnow()),
     }
 
-    # bloom_vist_json = collapse_duplicate_albums(bloom_vist_json, ids_and_hashes)
+    # bloom_vist_json = collapse_duplicate_albums_based_on_lineage_and_language(
+    #     bloom_vist_json, ids_and_hashes
+    # )
+
+    # bloom_vist_json = collapse_albums_based_on_image_similarity(
+    #     bloom_vist_json, ids_and_hashes
+    # )
+
+    # bloom_vist_json = dedupe_based_on_captions(bloom_vist_json)
 
     with open(args.out, "w") as outf:
         logging.warning(f"writing results to {args.out}")
