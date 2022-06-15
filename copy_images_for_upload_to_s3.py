@@ -8,7 +8,7 @@ if __name__ == "__main__":
     # Copy images referenced in the VIST-format JSON created by bloom_downloads_to_vist_format
     # so that we can upload it all to s3.
     # takes in: path to bloom_downloads, json output of bloom_downloads_to_vist_format.py, output_folder
-    json_to_read = Path("bloom_downloads_vist_filtered_by_license_2022-04-29T1141.json")
+    json_to_read = Path("data/bloom_vist_june14.json")
     bloom_downloads_path = Path("data/bloom_downloads")
     output_folder = Path("data/images_to_upload")
 
@@ -17,9 +17,9 @@ if __name__ == "__main__":
 
     for image in tqdm(bloom_json["images"]):
         # print(image["url_o"])
-        image_path = bloom_downloads_path / image["url_o"]
+        image_path = bloom_downloads_path / image["local_image_path"]
         # print(image_path)
-        output_path = output_folder / image["url_o"]
+        output_path = output_folder / image["local_image_path"]
         Path(output_path.parent).mkdir(parents=True, exist_ok=True)
         shutil.copy(str(image_path), str(output_path))
 
