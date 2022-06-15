@@ -141,11 +141,12 @@ def create_vist_images_for_book(
 
         local_image_path = f"{book_folder.name}/{image}"
 
-        # web_url = calculate_web_url_given_local_path(
-        #     s3_bucket=s3_bucket, local_path=local_image_path
-        # ) # obsolete, we simply match the aws manifest above.
-
-        web_url = ids_and_hashes[book_folder.name][image]["web_url"]
+        try:
+            web_url = ids_and_hashes[book_folder.name][image]["web_url"]
+        except KeyError:
+            web_url = calculate_web_url_given_local_path(
+                s3_bucket=s3_bucket, local_path=local_image_path
+            )  # obsolete, we simply match the aws manifest above.
 
         image_dict = {
             # "datetaken": "", # TODO: image datetaken
@@ -297,7 +298,7 @@ def parse_book_htm_for_metadata(book_htm):
         metadata_name = item.get("data-book")
 
         for attr_key, attr_value in item.attrs.items():
-            # print(f"\t\t{attr_key}, {attr_value}")
+
             if attr_key == "data-book":
                 meta_item[metadata_name] = item.text
             else:
@@ -336,8 +337,8 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         tg_divs = page.find_all("div", class_="bloom-translationGroup")
 
         imgs = page.find_all("img")
-        logging.debug(f"found {len(imgs)} imgs in the page: {imgs}")
-        logging.debug(f"found {len(tg_divs)} translation groups in the page")
+        logging.warning(f"found {len(imgs)} imgs in the page: {imgs}")
+        logging.warning(f"found {len(tg_divs)} translation groups in the page")
         # turns out you sometimes have, like, imgs on their own page followed by a caption.
 
         # if len(imgs) != len(tg_divs):
@@ -349,7 +350,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         if imgs:
             img = imgs[0]
             img_src = img["src"]
-            logging.debug(f"img_src: {img_src}")
+            logging.warning(f"img_src: {img_src}")
         else:
             img_src = None
 
@@ -362,7 +363,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
                     captions[key] = captions[key] + tg_div_captions[key]
 
             captions = dict(captions)
-            logging.debug(
+            logging.warning(
                 f"captions found in {len(tg_divs)} translationGroups: {captions}"
             )
         else:
@@ -373,7 +374,27 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         f"From '{htmfile_path.name}', extracted {len(img_caption_tuples)} tuples containing images and/or captions from numberedPage divs"
     )
 
-    return img_caption_tuples
+    # attempting to fix books which have caption following image on a separate page.
+    fixed_tuples = []
+    for i, img_caption_tuple in enumerate(img_caption_tuples):
+        if i > 0:
+            prev_img, prev_caption = img_caption_tuples[i - 1]
+            img, caption = img_caption_tuple
+
+            if img is not None and caption is not None:
+                fixed_tuples.append(img_caption_tuple)
+            elif img is None and caption is not None:
+
+                if prev_img is not None and prev_caption is None:
+                    new_tuple = (prev_img, caption)
+                    fixed_tuples.append(new_tuple)
+            elif img is not None and caption is None:
+
+                pass
+    logging.info(
+        f"attempted to fix image/caption tuples. Before we had {len(img_caption_tuples)}, after: {len(fixed_tuples)} "
+    )
+    return fixed_tuples
 
 
 def parse_translation_group(tg_div):
@@ -515,11 +536,11 @@ def story_has_image_caption_matching_issues(image_caption_tuples: list):
 
     for img, captions in image_caption_tuples:
         if captions is None:
-            logging.debug(f"no matching img for captions {captions}")
+            logging.warning(f"no matching caption for img {img}")
             return True
 
         if img is None:
-            logging.debug(f"no matching caption for img {img}")
+            logging.warning(f"no matching img for caption {captions}")
             return True
 
     return False
@@ -608,6 +629,26 @@ def remove_languages_with_mostly_whitespace(image_caption_pairs, len_threshold=5
         fixed_pairs.append(fixed_pair)
 
     return fixed_pairs
+
+
+def collapse_duplicate_albums(bloom_vist_json, ids_and_hashes):
+
+    albums = bloom_vist_json["albums"]
+
+    albums_by_id = {}
+
+    for album in albums:
+
+        album_id = album["id"]
+        album_title = album["title"]
+        albums_by_id[album_id] = album
+
+        books_in_lineage = album["metadata_from_original_json"]["bookLineage"]
+        print(
+            f"For album with title {album_title}, there are these books in the lineage: {books_in_lineage}"
+        )
+
+    return bloom_vist_json
 
 
 if __name__ == "__main__":
@@ -903,7 +944,7 @@ if __name__ == "__main__":
         "utc_creation_date": str(datetime.datetime.utcnow()),
     }
 
-    # bloom_vist_json =
+    # bloom_vist_json = collapse_duplicate_albums(bloom_vist_json, ids_and_hashes)
 
     with open(args.out, "w") as outf:
         logging.warning(f"writing results to {args.out}")
