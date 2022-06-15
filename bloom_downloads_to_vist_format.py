@@ -903,6 +903,13 @@ if __name__ == "__main__":
             ids_and_hashes=ids_and_hashes,
         )
 
+        if image_caption_pairs is None:
+            # that means there was one we couldn't fix.
+            logging.warning(
+                f"There was an image we couldn't find the id for. Skipping."
+            )
+            continue
+
         image_caption_pairs = strip_whitespace_from_around_captions(
             image_caption_pairs=image_caption_pairs
         )
@@ -910,13 +917,6 @@ if __name__ == "__main__":
         image_caption_pairs = remove_languages_with_mostly_whitespace(
             image_caption_pairs=image_caption_pairs
         )
-
-        if image_caption_pairs is None:
-            # that means there was one we couldn't fix.
-            logging.warning(
-                f"There was an image we couldn't find the id for. Skipping."
-            )
-            continue
 
         if len(image_caption_pairs) == 0:
             # that means there was one we couldn't fix.
