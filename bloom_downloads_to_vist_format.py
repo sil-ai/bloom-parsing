@@ -1,4 +1,3 @@
-from __future__ import annotations
 import argparse
 from collections import defaultdict
 from pathlib import Path
@@ -227,7 +226,7 @@ def create_vist_annotations_for_book(
                 }
             ]
 
-        annotations.append(annotation)
+            annotations.append(annotation)
     return annotations
 
 
@@ -338,8 +337,8 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         tg_divs = page.find_all("div", class_="bloom-translationGroup")
 
         imgs = page.find_all("img")
-        logging.warning(f"found {len(imgs)} imgs in the page: {imgs}")
-        logging.warning(f"found {len(tg_divs)} translation groups in the page")
+        logging.debug(f"found {len(imgs)} imgs in the page: {imgs}")
+        logging.debug(f"found {len(tg_divs)} translation groups in the page")
         # turns out you sometimes have, like, imgs on their own page followed by a caption.
 
         # if len(imgs) != len(tg_divs):
@@ -351,7 +350,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
         if imgs:
             img = imgs[0]
             img_src = img["src"]
-            logging.warning(f"img_src: {img_src}")
+            logging.debug(f"img_src: {img_src}")
         else:
             img_src = None
 
@@ -364,7 +363,7 @@ def parse_matching_images_and_captions_from_htmfile(htmfile_path):
                     captions[key] = captions[key] + tg_div_captions[key]
 
             captions = dict(captions)
-            logging.warning(
+            logging.debug(
                 f"captions found in {len(tg_divs)} translationGroups: {captions}"
             )
         else:
