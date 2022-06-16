@@ -1,8 +1,18 @@
 import json
+from copy import deepcopy
+from tqdm import tqdm
 from pathlib import Path
+from datetime import datetime
+from collections import defaultdict
+from nltk.metrics.distance import edit_distance
 
-
-def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict):
+""" some problems:
+    - albums may essentially be the same but have an additional all white image or so --> still collapsed them
+    - since the perceptual hash seems to be quite generous in what constitutes the same image, it is not reliable enough
+        to detect nearly identical images --> duplicate images are likely to be in the dataset. Should'nt  be a big problem
+        since the annotations are likely used for the dataset construction. All images will point to a collapsed album_id 
+        though, so there may be more images than expected pointing at an album"""
+def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, images_similarity_thresh=80):
     # load in the bloom_vist_json (https://bloom-vist.s3.amazonaws.com/bloom_vist_june14.json) and
     # and ids_and_hashes json https://bloom-vist.s3.amazonaws.com/ids_and_hashes_june_14_with_image_hashes.json
     # get all the albums
@@ -12,60 +22,141 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict):
     # translation: the full batch of text tagged with a certain language code/name in the book.
     # story: a VIST term originally, in our json a segmented representation of a translation, where it is segmented in a way that it aligns to an ordered set of images in the book
     # album: a VIST term originally, in our the ordered set of images associated with the book
-
     albums = bloom_vist_dict["albums"]
     albums_by_id = {}
     checked_albums = []
+    images = bloom_vist_dict["images"]
+    annotations = bloom_vist_dict["annotations"]
 
     # the dictionary we're returning, with albums that have the same images collapsed, and duplicate captions deleted.
     updated_bloom_vist_dict = {}
+    dupe_album_ids = {}
+    # some dicts to speed up the search for images and annotations later on
+    images_by_id = defaultdict(list)
+    annotations_by_id = defaultdict(list)
+    image_hashes = {}
 
     for album in albums:
         album_id = album["id"]
-
         albums_by_id[album_id] = album
+    for image in images:
+        images_by_id[image["album_id"]].append(image)
+    # didn't see the need to keep the unnecessary list in my own dict :)
+    for annotation in annotations:
+        if len(annotation) > 1:
+            print("assumption of unnecessary list seems false")
+        annotations_by_id[annotation[0]["album_id"]].append(annotation[0])
+    for item in ids_and_hashes_dict.values():
+        for image in item.values():
+            """ 
+            just checking to make sure there actually are images with the same perceptual hash --> yes there are many
+            if image.get("image_hash", "no_hash") in image_hashes.values():
+                print("Images with the same image hash exist.")
+            """
+            image_hashes[image["id"]] = image.get("image_hash", "no_hash")
+    # count number of duplicate albums for sanity checks later on
+    duplicate_counter = 0
 
-    for album in albums:
+    for album in tqdm(albums):
+        album_id = album["id"]
+        album_annotations = annotations_by_id.get(album_id, [])
+        album_images = images_by_id.get(album_id, [])
+        # no need to keep empty albums
+        if len(album_images) == 0 or len(album_annotations) == 0:
+            print("This album seems to have no images and/or no annotations associated with the album id", album_id)
+            continue
+        duplicateID = None
+
         for checked_album in checked_albums:
-            # Let's limit ourselves to albums that are in the same lineage.
-            # if they share lineage they MIGHT be the same.
-            # check the lineages of each. Just see if there's intersection between the lists.
-            pass
-            book_lineage = album["metadata_from_original_json"]["bookLineage"].split()
-            book_lineage_from_checked = album["metadata_from_original_json"][
-                "bookLineage"
-            ].split()
+            checked_id = checked_album["id"]
+            # this turned out to be very helpful in the beginning, but useless now. Just remains as sanity check
+            if checked_id == album_id:
+                print("Why are there duplicate IDs?")
+                print(album_id, checked_id)
+                duplicateID = checked_id
+                break
+            identical_image_count = 0
+            checked_images = images_by_id.get(checked_id)
+            if checked_album["metadata_from_original_json"]["bookInstanceId"] == album["metadata_from_original_json"]["bookInstanceId"]:
+                duplicateID = checked_id
+                """ considered merging titles, but probably not helpful and just wasting runtime
+                titles_album = ast.literal_eval(album["metadata_from_original_json"]["allTitles"])
+                titles_checked = ast.literal_eval(checked_album["metadata_from_original_json"]["allTitles"])
+                checked_album["metadata_from_original_json"]["allTitles"] = str(dict(titles_album, **titles_checked))
+                """
+                break
+            # compare perceptual hash of all images in album to identify duplicates
+            for idx, album_image in enumerate(album_images):
+                if idx >= len(checked_images):
+                    break
+                if image_hashes[album_image["id"]] == image_hashes[checked_images[idx]["id"]]:
+                    identical_image_count += 1
+            if identical_image_count != 0:
+                # this may behave weirdly if the album is very small, an additional check for the number of images in
+                # total may be helpful --> but some books differ in only an empty white image or so --> idk
+                percentage = 100/len(album_images)*identical_image_count
+                if percentage >= images_similarity_thresh:
+                    """
+                    print("Percentage of identical images", percentage)
+                    print(album_id, " - ", checked_id)
+                    """
+                    # just for checking some random edgecases in debug mode
+                    if percentage < 100:
+                        pass
+                    duplicateID = checked_id
+                    break
+        # add album to our new album dict if it is not a duplicate
+        if duplicateID is None:
+            checked_albums.append(album)
+            dupe_album_ids[album_id] = []
+        # track duplicate album ids for later
+        else:
+            duplicate_counter += 1
+            dupe_album_ids[duplicateID].append(album_id)
 
-            # Checking the images. If they have at least mostly the same images we can consider them the same album.
+    # COLLAPSE ALBUMS
+    duplicate_ids = dict((dupe, non_dupe) for non_dupe,v in dupe_album_ids.items() for dupe in v)
+    for image in tqdm(images):
+        album_id = image["album_id"]
+        if album_id in duplicate_ids.keys():
+            image["album_id"] = duplicate_ids[album_id]
 
-            # TODO: code to parse out all the associated images for each album goes here.
+    # Intermediate save of albums and images to speedup any debugging of the annotation deduplication
+    updated_bloom_vist_dict["utc_creation_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updated_bloom_vist_dict["duplicate_ids_list"] = dupe_album_ids
+    updated_bloom_vist_dict["albums"] = checked_albums
+    updated_bloom_vist_dict["images"] = images
+    with open("bloom_vist_june14_albums_images_deduped.json", "w") as fixed_file:
+        json.dump(updated_bloom_vist_dict, fixed_file)
 
-            # TODO: code to check the md5 hashes of the two sets of images, precomputed in ids_and_hashes.json
-            # You can use ==, if they have the same md5 that means they're exactly equivalent to the byte.
-            # no need to check perceptual hash if they use literally the same images to the pixel.
+    # DEDUPE STORIES/CAPTIONS + DELETE DUPLICATE STORIES
+    non_dupe_annotations = []
+    number_dup_ans = 0
+    dup_keys = duplicate_ids.keys()
+    for annotation in tqdm(annotations):
+        album_id = annotation[0]["album_id"]
+        text = annotation[0]["text"]
+        if album_id in dup_keys:
+            non_dupe_id = duplicate_ids[album_id]
+            non_dupes = annotations_by_id[non_dupe_id]
+            dupe = False
+            for an in non_dupes:
+                # well it seems I'm to poor for an editdistance comparison here, with better hardware it may be feasible
+                #if edit_distance(an["text"], text) < 3:
+                if an["text"] == text:
+                    dupe = True
+                    number_dup_ans += 1
+                    break
+            if not dupe:
+                annotation[0]["album_id"] = non_dupe_id
+                non_dupe_annotations.append(annotation)
+                annotations_by_id[non_dupe_id].append(annotation[0])
+        else:
+            non_dupe_annotations.append(annotation)
 
-            # TODO: code to check the perceptual hashes of the two sets of images, precomputed in ids_and_hashes.json
-            # "similar" images have the same phash/image_hash, you can literally just use ==
-
-            ## COLLAPSE ALBUMS
-            # If we determine that they are the same "Album", aka an ordered set of images, we need to go through the
-            # TODO: Code that parses through the json and updates all the album ids to point to just one of these two albums.
-
-            ## DEDUPE STORIES/CAPTIONS
-            # OK, if it's the same "album" we should also check for captions that are duplicated.
-            # It's often the case that the, like, English translation exists within multiple "books".
-
-            # TODO: code that checks for sets of duplicate captions.
-            # Maybe start by pulling out all sets of captions that for these albums that are marked as the same lang?
-            # Maybe use editdistance library so small punctuation diffs don't ruin us
-            # Maybe just be lazy and use ==
-
-            ### DELETE DUPLICATE STORIES
-            # If we've determined two "stories" (sets of image/caption pairs) are duplicates, we can just... delete one?
-            # TODO: code that scrubs through the json and deletes all annotations with the story_id that is a dupe.
-
-        checked_albums.append(album)
-
+    updated_bloom_vist_dict["annotations"] = non_dupe_annotations
+    print("Duplicate Albums found:", duplicate_counter)
+    print("Duplicate Annotations found", number_dup_ans)
     return updated_bloom_vist_dict
 
 
@@ -73,7 +164,7 @@ if __name__ == "__main__":
 
     # https://bloom-vist.s3.amazonaws.com/bloom_vist_june14.json
 
-    path_to_bloom_vist_json = Path("bloom_vist_june14.json ")
+    path_to_bloom_vist_json = Path("bloom_vist_june15.json")
 
     # https://bloom-vist.s3.amazonaws.com/ids_and_hashes_june_14_with_image_hashes.json
     path_to_precomputed_file_ids_and_hashes_json = Path(
