@@ -204,6 +204,7 @@ def collapse_duplicate_albums_and_stories(
 
         first_annotation = story_to_check[0]
         album_id_for_annotation = first_annotation[0]["album_id"]
+        story_is_in_a_dupe_album = False
         if album_id_for_annotation in dup_keys:
             story_is_in_a_dupe_album = True
 
