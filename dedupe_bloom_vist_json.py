@@ -1,10 +1,15 @@
+import argparse
 import json
 from copy import deepcopy
 from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
-from nltk.metrics.distance import edit_distance
+from thefuzz import fuzz
+import random
+from itertools import combinations
+
+# from nltk.metrics.distance import edit_distance
 
 """ some problems:
     - albums may essentially be the same but have an additional all white image or so --> still collapsed them
@@ -12,7 +17,11 @@ from nltk.metrics.distance import edit_distance
         to detect nearly identical images --> duplicate images are likely to be in the dataset. Should'nt  be a big problem
         since the annotations are likely used for the dataset construction. All images will point to a collapsed album_id 
         though, so there may be more images than expected pointing at an album"""
-def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, images_similarity_thresh=80):
+
+
+def collapse_duplicate_albums_and_stories(
+    bloom_vist_dict, ids_and_hashes_dict, output_json_path, images_similarity_thresh=80
+):
     # load in the bloom_vist_json (https://bloom-vist.s3.amazonaws.com/bloom_vist_june14.json) and
     # and ids_and_hashes json https://bloom-vist.s3.amazonaws.com/ids_and_hashes_june_14_with_image_hashes.json
     # get all the albums
@@ -33,7 +42,7 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, 
     dupe_album_ids = {}
     # some dicts to speed up the search for images and annotations later on
     images_by_id = defaultdict(list)
-    annotations_by_id = defaultdict(list)
+    annotations_by_album_id = defaultdict(list)
     image_hashes = {}
 
     for album in albums:
@@ -42,10 +51,12 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, 
     for image in images:
         images_by_id[image["album_id"]].append(image)
     # didn't see the need to keep the unnecessary list in my own dict :)
-    for annotation in annotations:
-        if len(annotation) > 1:
+    for first_annotation in annotations:
+        if len(first_annotation) > 1:
             print("assumption of unnecessary list seems false")
-        annotations_by_id[annotation[0]["album_id"]].append(annotation[0])
+        annotations_by_album_id[first_annotation[0]["album_id"]].append(
+            first_annotation[0]
+        )
     for item in ids_and_hashes_dict.values():
         for image in item.values():
             """ 
@@ -57,13 +68,17 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, 
     # count number of duplicate albums for sanity checks later on
     duplicate_counter = 0
 
+    print("filtering albums")
     for album in tqdm(albums):
         album_id = album["id"]
-        album_annotations = annotations_by_id.get(album_id, [])
+        album_annotations = annotations_by_album_id.get(album_id, [])
         album_images = images_by_id.get(album_id, [])
         # no need to keep empty albums
         if len(album_images) == 0 or len(album_annotations) == 0:
-            print("This album seems to have no images and/or no annotations associated with the album id", album_id)
+            print(
+                "This album seems to have no images and/or no annotations associated with the album id",
+                album_id,
+            )
             continue
         duplicateID = None
 
@@ -77,7 +92,10 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, 
                 break
             identical_image_count = 0
             checked_images = images_by_id.get(checked_id)
-            if checked_album["metadata_from_original_json"]["bookInstanceId"] == album["metadata_from_original_json"]["bookInstanceId"]:
+            if (
+                checked_album["metadata_from_original_json"]["bookInstanceId"]
+                == album["metadata_from_original_json"]["bookInstanceId"]
+            ):
                 duplicateID = checked_id
                 """ considered merging titles, but probably not helpful and just wasting runtime
                 titles_album = ast.literal_eval(album["metadata_from_original_json"]["allTitles"])
@@ -89,12 +107,15 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, 
             for idx, album_image in enumerate(album_images):
                 if idx >= len(checked_images):
                     break
-                if image_hashes[album_image["id"]] == image_hashes[checked_images[idx]["id"]]:
+                if (
+                    image_hashes[album_image["id"]]
+                    == image_hashes[checked_images[idx]["id"]]
+                ):
                     identical_image_count += 1
             if identical_image_count != 0:
                 # this may behave weirdly if the album is very small, an additional check for the number of images in
                 # total may be helpful --> but some books differ in only an empty white image or so --> idk
-                percentage = 100/len(album_images)*identical_image_count
+                percentage = 100 / len(album_images) * identical_image_count
                 if percentage >= images_similarity_thresh:
                     """
                     print("Percentage of identical images", percentage)
@@ -114,72 +135,288 @@ def collapse_duplicate_albums_and_stories(bloom_vist_dict, ids_and_hashes_dict, 
             duplicate_counter += 1
             dupe_album_ids[duplicateID].append(album_id)
 
+    print("collapsing albums")
     # COLLAPSE ALBUMS
-    duplicate_ids = dict((dupe, non_dupe) for non_dupe,v in dupe_album_ids.items() for dupe in v)
+    duplicate_album_ids_dict = dict(
+        (dupe, non_dupe) for non_dupe, v in dupe_album_ids.items() for dupe in v
+    )
     for image in tqdm(images):
         album_id = image["album_id"]
-        if album_id in duplicate_ids.keys():
-            image["album_id"] = duplicate_ids[album_id]
+        if album_id in duplicate_album_ids_dict.keys():
+            image["album_id"] = duplicate_album_ids_dict[album_id]
 
     # Intermediate save of albums and images to speedup any debugging of the annotation deduplication
-    updated_bloom_vist_dict["utc_creation_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updated_bloom_vist_dict["utc_creation_date"] = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     updated_bloom_vist_dict["duplicate_ids_list"] = dupe_album_ids
     updated_bloom_vist_dict["albums"] = checked_albums
     updated_bloom_vist_dict["images"] = images
-    with open("bloom_vist_june14_albums_images_deduped.json", "w") as fixed_file:
+    with open(output_json_path, "w") as fixed_file:
         json.dump(updated_bloom_vist_dict, fixed_file)
 
+    print("dedupe stories/captions")
     # DEDUPE STORIES/CAPTIONS + DELETE DUPLICATE STORIES
     non_dupe_annotations = []
     number_dup_ans = 0
-    dup_keys = duplicate_ids.keys()
-    for annotation in tqdm(annotations):
-        album_id = annotation[0]["album_id"]
-        text = annotation[0]["text"]
-        if album_id in dup_keys:
-            non_dupe_id = duplicate_ids[album_id]
-            non_dupes = annotations_by_id[non_dupe_id]
-            dupe = False
-            for an in non_dupes:
-                # well it seems I'm to poor for an editdistance comparison here, with better hardware it may be feasible
-                #if edit_distance(an["text"], text) < 3:
-                if an["text"] == text:
-                    dupe = True
-                    number_dup_ans += 1
-                    break
-            if not dupe:
-                annotation[0]["album_id"] = non_dupe_id
-                non_dupe_annotations.append(annotation)
-                annotations_by_id[non_dupe_id].append(annotation[0])
+    dup_keys = duplicate_album_ids_dict.keys()
+    dupe_annotations = []  # just for printing out later.
+
+    # build a dictionary of _stories_. Lists of annotations with the same story ID, all associated with one album.
+    stories_by_story_id = defaultdict(list)
+    print(f"Building index of stories, indexed by story id")
+    for first_annotation in tqdm(annotations):
+        album_id = first_annotation[0]["album_id"]
+        story_to_check_id = first_annotation[0]["story_id"]
+
+        # text = annotation[0]["text"]
+        stories_by_story_id[story_to_check_id].append(first_annotation)
+
+    # build a dictionary of stories, indexed by album_id, aka the set of photos the captions go with.
+    stories_by_album_id = defaultdict(list)
+    print(f"Building index of stories indexed by album ID")
+    for story_to_check_id in tqdm(stories_by_story_id.keys()):
+        story = stories_by_story_id[story_to_check_id]  # a list of annotations.
+
+        album_ids_in_story = []
+        for first_annotation in story:
+            album_id_for_annotation = first_annotation[0]["album_id"]
+            album_ids_in_story.append(album_id_for_annotation)
+
+        album_ids_in_story = list(set(album_ids_in_story))
+
+        if len(album_ids_in_story) > 1:
+            raise ValueError(
+                f"ERROR: a story with story_id {story_to_check_id} contains more than one album ID: {album_ids_in_story}, how the heck"
+            )
         else:
-            non_dupe_annotations.append(annotation)
+            album_id_for_story = album_ids_in_story[0]
+            stories_by_album_id[album_id_for_story].append(story)
+
+    print(f"DEDUPING STORIES")
+    stories_to_keep = []
+    stories_to_toss_as_indexes_pointing_to_keepers = {}
+    for story_to_check_id, story_to_check_against_id in tqdm(
+        combinations(stories_by_story_id.keys(), 2)
+    ):
+        story_to_check = stories_by_story_id[story_to_check_id]
+        story_to_check_against = stories_by_story_id[story_to_check_against_id]
+
+        first_annotation = story_to_check[0]
+        album_id_for_annotation = first_annotation[0]["album_id"]
+        if album_id_for_annotation in dup_keys:
+            story_is_in_a_dupe_album = True
+
+        # check story
+        stories_are_the_same = is_story_to_check_a_dupe_of_story_to_check_against(
+            story_to_check, story_to_check_against
+        )
+        if stories_are_the_same:
+            if story_is_in_a_dupe_album:
+                # keep the one in the non-dupe album!
+                # toss this one.
+                stories_to_toss_as_indexes_pointing_to_keepers[
+                    story_to_check_id
+                ] = story_to_check_against_id
+                print(f"story {story_to_check_id} is a dupe!")
+            else:
+                # this is the canonical one! It's in a non-dupe album.
+                stories_to_keep.append(story_to_check_id)
+        else:
+            # Not a dupe story!
+            stories_to_keep.append(story_to_check_id)
+
+    for first_annotation in annotations:
+        story_id = first_annotation[0]["story_id"]
+        if story_id in stories_to_toss_as_indexes_pointing_to_keepers:
+            number_dup_ans += 1
+        else:
+            non_dupe_annotations.append(first_annotation)
+
+    # for annotation in tqdm(annotations):
+    #     album_id = annotation[0]["album_id"]
+    #     story_id = annotation[0]["story_id"]
+
+    #     text = annotation[0]["text"]
+    #     stories_by_id
+    #     if album_id in dup_keys:
+    #         non_dupe_id = duplicate_ids[album_id]
+    #         non_dupes = annotations_by_album_id[non_dupe_id]
+
+    #         dupe = False
+    #         for an in non_dupes:
+    #             # well it seems I'm to poor for an editdistance comparison here, with better hardware it may be feasible
+    #             # if edit_distance(an["text"], text) < 3:
+    #             # if an["text"] == text:
+    #             if fuzz.ratio(an["text"], text) > 95:
+    #                 dupe = True
+    #                 number_dup_ans += 1
+    #                 dupe_annotations.append((an, annotation[0]))
+    #                 break
+    #         if not dupe:
+    #             annotation[0]["album_id"] = non_dupe_id
+    #             non_dupe_annotations.append(annotation)
+    #             annotations_by_album_id[non_dupe_id].append(annotation[0])
+    #     else:
+    #         non_dupe_annotations.append(annotation)
 
     updated_bloom_vist_dict["annotations"] = non_dupe_annotations
     print("Duplicate Albums found:", duplicate_counter)
     print("Duplicate Annotations found", number_dup_ans)
+    print(
+        "Duplicate Stories found", len(stories_to_toss_as_indexes_pointing_to_keepers)
+    )
+
+    sample_count = min(5, len(stories_to_toss_as_indexes_pointing_to_keepers))
+    dupe_story_samples = list(stories_to_toss_as_indexes_pointing_to_keepers.keys())
+    random.shuffle(dupe_story_samples)
+
+    for dupe_story_id in dupe_story_samples[:sample_count]:
+        print("************************")
+        print(
+            f"SAMPLE DUPE STORY: {dupe_story_id}, dupe of {stories_to_toss_as_indexes_pointing_to_keepers[dupe_story_id]}, first annotation:"
+        )
+        dupe_story_to_show = stories_by_story_id[dupe_story_id]
+        first_annotation = dupe_story_to_show[0]
+        print(f"{first_annotation=}")
+        # for annotation in dupe_story_to_show:
+        #     print(annotation[0]["text"])
     return updated_bloom_vist_dict
+
+
+def is_story_to_check_a_dupe_of_story_to_check_against(
+    story_to_check: list,
+    story_to_check_against: list,
+    story_length_difference_threshold=5,
+    fuzz_ratio_threshold=95,
+    percent_same_threshold=0.95,
+):
+    story_to_check_first_annotation = story_to_check[0]
+    story_to_check_id = story_to_check_first_annotation[0]["story_id"]
+
+    story_to_check_against_first_annotation = story_to_check_against[0]
+    story_to_check_against_id = story_to_check_against_first_annotation[0]["story_id"]
+    debug_statements = False
+
+    # if (
+    #     "TESTING" in story_to_check_id
+    #     or "TESTING" in story_to_check_against_id
+    #     or "dcaed8df0ce0" in story_to_check_id
+    #     or "dcaed8df0ce0" in story_to_check_against_id
+    # ):
+    #     debug_statements = True
+    #     if (
+    #         "dcaed8df0ce0" in story_to_check_id
+    #         and "dcaed8df0ce0" in story_to_check_against_id
+    #     ):
+    #         print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    #         print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    #         print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    #         print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    #         print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    #         print(
+    #             f"{story_to_check_id} is being checked against {story_to_check_against_id}"
+    #         )
+
+    # I mean, if they've got the same story ID and length and first text element the same they are literally the same story.
+    if (
+        len(story_to_check) == len(story_to_check_against)
+        and story_to_check_id == story_to_check_against_id
+        and story_to_check_first_annotation["text"]
+        == story_to_check_against_first_annotation["text"]
+    ):
+        if debug_statements:
+            print(
+                f"{story_to_check_id} is a dupe of {story_to_check_against_id}, they have the same length, id, and first annotation"
+            )
+        return True
+
+    # if the lengths of the two lists are more than story_length_difference_threshold different they're different enough to keep probably.
+    if abs(
+        len(story_to_check) - len(story_to_check_against)
+        > story_length_difference_threshold
+    ):
+        if debug_statements:
+            print(
+                f"{story_to_check_id} (length {len(story_to_check)}) is not a dupe of {story_to_check_against_id} (length {len(story_to_check_against)}), too different in length"
+            )
+        return False
+
+    # check if all/most of the captions are the same.
+    count_of_annotations_the_same = 0
+    dupe_pairs = []
+    for story_to_check_annotation in story_to_check:
+
+        for story_to_check_against_annotation in story_to_check_against:
+
+            if (
+                fuzz.ratio(
+                    story_to_check_annotation[0]["text"],
+                    story_to_check_against_annotation[0]["text"],
+                )
+                > fuzz_ratio_threshold
+            ):
+                count_of_annotations_the_same += 1
+
+                pair_of_dupes = (
+                    story_to_check_annotation,
+                    story_to_check_against_annotation,
+                )
+                dupe_pairs.append(pair_of_dupes)
+    percent_same = count_of_annotations_the_same / len(story_to_check)
+    if percent_same > percent_same_threshold:
+        if debug_statements:
+            print(
+                f"The story {story_to_check_id} is a dupe of {story_to_check_against_id}, because {count_of_annotations_the_same} out of {len(story_to_check)} annotations in the story are found within it. That's {percent_same} similar, greater than the threshold of {percent_same_threshold}"
+            )
+            print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+        return True
+
+    else:
+        if debug_statements:
+            print(
+                f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, because {count_of_annotations_the_same} out of {len(story_to_check)} annotations in the story are found within it. That's {percent_same} similar, less than the threshold of {percent_same_threshold}"
+            )
+        return False
 
 
 if __name__ == "__main__":
 
     # https://bloom-vist.s3.amazonaws.com/bloom_vist_june14.json
 
-    path_to_bloom_vist_json = Path("bloom_vist_june15.json")
+    # path_to_bloom_vist_json = Path("data/bloom_vist_june15.json")
 
     # https://bloom-vist.s3.amazonaws.com/ids_and_hashes_june_14_with_image_hashes.json
     path_to_precomputed_file_ids_and_hashes_json = Path(
         "ids_and_hashes_june_14_with_image_hashes.json"
     )
+    parser = argparse.ArgumentParser(
+        description="Take bloom downloads and output SIS JSON"
+    )
 
-    # TODO: load jsons correctly, not sure if this is right
-    with open(str(path_to_bloom_vist_json)) as bvf:
+    parser.add_argument(
+        "path_to_bloom_vist_json",
+        # dest="source",
+        type=Path,
+        default=Path("data/bloom_vist_june15.json"),
+        help="json to dedupe",
+    )
+
+    args = parser.parse_args()
+
+    # output_json_path = "bloom_vist_june14_albums_images_deduped.json"
+    output_json_path = args.path_to_bloom_vist_json.parent / (
+        args.path_to_bloom_vist_json.stem + "_deduped.json"
+    )
+
+    with open(str(args.path_to_bloom_vist_json)) as bvf:
         bloom_vist_dict = json.load(bvf)
 
     with open(str(path_to_precomputed_file_ids_and_hashes_json)) as idf:
         ids_and_hashes_dict = json.load(idf)
     updated_bloom_vist_dict = collapse_duplicate_albums_and_stories(
-        bloom_vist_dict, ids_and_hashes_dict
+        bloom_vist_dict, ids_and_hashes_dict, output_json_path
     )
 
-    with open("bloom_vist_june14_deduped.json", "w") as fixed_file:
+    with open(output_json_path, "w") as fixed_file:
         json.dump(updated_bloom_vist_dict, fixed_file)
