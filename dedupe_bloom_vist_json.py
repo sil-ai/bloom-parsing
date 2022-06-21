@@ -196,74 +196,58 @@ def collapse_duplicate_albums_and_stories(
     print(f"DEDUPING STORIES")
     stories_to_keep = []
     stories_to_toss_as_indexes_pointing_to_keepers = {}
-    # story_combinations = list(combinations(stories_by_story_id.keys(), 2))
-    for story_to_check_id in list(stories_by_story_id.keys()):
-        for story_to_check_against_id in list(stories_by_story_id.keys()):
 
-            # TODO: we end up checking things that are already known to be dupes multiple times. Have like a queue "stories_to_check" and pop them off one at a time perhaps?
-            # TODO: limit to stories of the same language?
+    story_ids_to_check = list(stories_by_story_id.keys())
 
-            story_to_check = stories_by_story_id[story_to_check_id]
-            story_to_check_against = stories_by_story_id[story_to_check_against_id]
+    # DEBUG CODE
+    # story_ids_to_check = story_ids_to_check[:20]
+    # story_ids_to_check.extend(
+    #     [
+    #         "7056431e-1924-47a1-ba5a-e8b67b1b857e",
+    #         "f46fc1b9-e512-429e-bf81-b47068553d48",
+    #     ]
+    # )
+    story_combinations = list(combinations(story_ids_to_check, 2))
 
-            first_annotation = story_to_check[0]
-            album_id_for_annotation = first_annotation[0]["album_id"]
-            story_is_in_a_dupe_album = False
-            if album_id_for_annotation in dup_keys:
-                story_is_in_a_dupe_album = True
+    # for story_to_check_id in tqdm(list(stories_by_story_id.keys())):
+    #     for story_to_check_against_id in list(stories_by_story_id.keys()):
 
-            # check story
-            stories_are_the_same = is_story_to_check_a_dupe_of_story_to_check_against(
-                story_to_check, story_to_check_against
+    for story_to_check_id, story_to_check_against_id in tqdm(story_combinations):
+        if story_to_check_id in stories_to_toss_as_indexes_pointing_to_keepers:
+            continue  # already know this one is a dupe of something, skip it.
+
+        # TODO: we end up checking things that are already known to be dupes multiple times. Have like a queue "stories_to_check" and pop them off one at a time perhaps?
+        # TODO: limit to stories of the same language?
+
+        story_to_check = stories_by_story_id[story_to_check_id]
+        story_to_check_against = stories_by_story_id[story_to_check_against_id]
+
+        # check story
+        stories_are_the_same = is_story_to_check_a_dupe_of_story_to_check_against(
+            story_to_check, story_to_check_against
+        )
+        if stories_are_the_same:
+
+            # toss the other one. This one was first so it wins
+            stories_to_toss_as_indexes_pointing_to_keepers[
+                story_to_check_against_id
+            ] = story_to_check_id
+            print(
+                f"story {story_to_check_against_id} is a dupe of {story_to_check_id}!"
             )
-            if stories_are_the_same:
-                if story_is_in_a_dupe_album:
-                    # keep the one in the non-dupe album!
-                    # toss this one.
-                    stories_to_toss_as_indexes_pointing_to_keepers[
-                        story_to_check_id
-                    ] = story_to_check_against_id
-                    print(f"story {story_to_check_id} is a dupe!")
-                else:
-                    # this is the canonical one! It's in a non-dupe album.
-                    stories_to_keep.append(story_to_check_id)
-            else:
-                # Not a dupe story!
-                stories_to_keep.append(story_to_check_id)
 
-        for first_annotation in annotations:
-            story_id = first_annotation[0]["story_id"]
-            if story_id in stories_to_toss_as_indexes_pointing_to_keepers:
-                number_dup_ans += 1
-            else:
-                non_dupe_annotations.append(first_annotation)
+        else:
+            # Not a dupe story... yet!
+            # do nothing!
+            pass
 
-    # for annotation in tqdm(annotations):
-    #     album_id = annotation[0]["album_id"]
-    #     story_id = annotation[0]["story_id"]
-
-    #     text = annotation[0]["text"]
-    #     stories_by_id
-    #     if album_id in dup_keys:
-    #         non_dupe_id = duplicate_ids[album_id]
-    #         non_dupes = annotations_by_album_id[non_dupe_id]
-
-    #         dupe = False
-    #         for an in non_dupes:
-    #             # well it seems I'm to poor for an editdistance comparison here, with better hardware it may be feasible
-    #             # if edit_distance(an["text"], text) < 3:
-    #             # if an["text"] == text:
-    #             if fuzz.ratio(an["text"], text) > 95:
-    #                 dupe = True
-    #                 number_dup_ans += 1
-    #                 dupe_annotations.append((an, annotation[0]))
-    #                 break
-    #         if not dupe:
-    #             annotation[0]["album_id"] = non_dupe_id
-    #             non_dupe_annotations.append(annotation)
-    #             annotations_by_album_id[non_dupe_id].append(annotation[0])
-    #     else:
-    #         non_dupe_annotations.append(annotation)
+    # let's count dupes
+    for first_annotation in annotations:
+        story_id = first_annotation[0]["story_id"]
+        if story_id in stories_to_toss_as_indexes_pointing_to_keepers:
+            number_dup_ans += 1
+        else:
+            non_dupe_annotations.append(first_annotation)
 
     updated_bloom_vist_dict["annotations"] = non_dupe_annotations
     print("Duplicate Albums found:", duplicate_counter)
@@ -303,6 +287,19 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     story_to_check_against_id = story_to_check_against_first_annotation[0]["story_id"]
     debug_statements = False
 
+    if (
+        "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_id
+        and "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_against_id
+    ):
+
+        debug_statements = True
+
+    if (
+        "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_id
+        and "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_against_id
+    ):
+        debug_statements = True
+
     # if (
     #     "TESTING" in story_to_check_id
     #     or "TESTING" in story_to_check_against_id
@@ -327,8 +324,8 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     if (
         len(story_to_check) == len(story_to_check_against)
         and story_to_check_id == story_to_check_against_id
-        and story_to_check_first_annotation["text"]
-        == story_to_check_against_first_annotation["text"]
+        and story_to_check_first_annotation[0]["text"]
+        == story_to_check_against_first_annotation[0]["text"]
     ):
         if debug_statements:
             print(
@@ -361,6 +358,10 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
                 )
                 > fuzz_ratio_threshold
             ):
+                # if (
+                #     story_to_check_annotation[0]["text"]
+                #     == story_to_check_against_annotation[0]["text"]
+                # ):
                 count_of_annotations_the_same += 1
 
                 pair_of_dupes = (
@@ -411,7 +412,7 @@ if __name__ == "__main__":
 
     # output_json_path = "bloom_vist_june14_albums_images_deduped.json"
     output_json_path = args.path_to_bloom_vist_json.parent / (
-        args.path_to_bloom_vist_json.stem + "_deduped.json"
+        args.path_to_bloom_vist_json.stem + "_deduped_on_june21.json"
     )
 
     with open(str(args.path_to_bloom_vist_json)) as bvf:
