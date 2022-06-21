@@ -132,6 +132,9 @@ def filter_with_expected_scripts(
     match_threshold=0.95,
     consistency_threshold=0.95,  # TODO:
 ):
+    updated_bloom_vist_dict = bloom_vist_dict
+    stories_by_language_dict = get_stories_by_language(bloom_vist_dict)
+    languages_in_bloom = list(stories_by_language_dict.keys())
 
     langtags = {}
     # expecting http://ldml.api.sil.org/langtags.json
@@ -141,30 +144,27 @@ def filter_with_expected_scripts(
     # based on based on https://www.scriptsource.org/
     with open(str(charmap_json)) as chf:
         charmap = json.load(chf)
-    updated_bloom_vist_dict = bloom_vist_dict  # TODO:
-    stories_by_language_dict = get_stories_by_language(bloom_vist_dict)
-    print("FILTERING WITH SCRIPTS: ISSUES EXIST")
 
-    languages_in_bloom = list(stories_by_language_dict.keys())
+    print("FILTERING WITH SCRIPTS:")
 
-    random.shuffle(languages_in_bloom)
+    # random.shuffle(languages_in_bloom)
     for lang in tqdm(list(languages_in_bloom)):
+        stories_for_this_lang = stories_by_language_dict[lang]
+        print(f"Checking lang {lang}, which has {len(stories_for_this_lang)} stories")
+        print(f"expected scripts for {lang} are {expected_scripts_for_this_lang}")
+
         expected_scripts_for_this_lang = get_expected_scripts_for_lang(
             bloom_lang_code=lang, langtags=langtags
         )
         stories_quarantined_count = 0
-
-        stories_for_this_lang = stories_by_language_dict[lang]
-        print(f"Checking lang {lang}, which has {len(stories_for_this_lang)} stories")
-        print(f"expected scripts for {lang} are {expected_scripts_for_this_lang}")
 
         if (
             expected_scripts_for_this_lang is not None
             and len(expected_scripts_for_this_lang) > 0
         ):
             for story in stories_for_this_lang:
-
-                story_id = story[0][0]["story_id"]
+                first_annotation = story[0]
+                story_id = first_annotation[0]["story_id"]  # first annotation, and then
 
                 quarantine_story = check_story_for_expected_scripts(
                     match_threshold,
@@ -246,20 +246,100 @@ def check_story_for_expected_scripts(
     return quarantine_story
 
 
-def filter_manually(bloom_vist_dict):
+def filter_template(bloom_vist_dict):
+    filter_method = "PUTTHINGHERE"
     print("Filtering manually")
-    updated_bloom_vist_dict = bloom_vist_dict  # TODO:
+    updated_bloom_vist_dict = bloom_vist_dict
+    stories_by_language_dict = get_stories_by_language(bloom_vist_dict)
+    languages_in_bloom = list(stories_by_language_dict.keys())
+
+    # random.shuffle(languages_in_bloom)
+    for lang in tqdm(list(languages_in_bloom)):
+        stories_for_this_lang = stories_by_language_dict[lang]
+        print(f"Checking lang {lang}, which has {len(stories_for_this_lang)} stories")
+        for story in stories_for_this_lang:
+            first_annotation = story[0]
+            story_id = first_annotation[0]["story_id"]  # first annotation, and then
+
+            quarantine_story = PUTMETHODHERE()
+            updated_bloom_vist_dict["stories"][story_id][
+                "quarantine"
+            ] = quarantine_story
+            if quarantine_story:
+                stories_quarantined_count += 1
+
+            updated_bloom_vist_dict["stories"][story_id]["filter_methods"][
+                filter_method
+            ] = {
+                "quarantine_result": quarantine_story,
+            }
+        print(f"Quarantined {stories_quarantined_count} for lang {lang}")
     return updated_bloom_vist_dict
 
 
-def filter_with_tf_iif(bloom_vist_dict):
-    print("Filtering with TF IFF")
-    updated_bloom_vist_dict = bloom_vist_dict  # TODO:
+def filter_manually(bloom_vist_dict):
+    print("Filtering manually")
+    updated_bloom_vist_dict = bloom_vist_dict
+    stories_by_language_dict = get_stories_by_language(bloom_vist_dict)
+    languages_in_bloom = list(stories_by_language_dict.keys())
+
+    # random.shuffle(languages_in_bloom)
+    for lang in tqdm(list(languages_in_bloom)):
+        stories_for_this_lang = stories_by_language_dict[lang]
+        print(f"Checking lang {lang}, which has {len(stories_for_this_lang)} stories")
+        for story in stories_for_this_lang:
+            first_annotation = story[0]
+            story_id = first_annotation[0]["story_id"]  # first annotation, and then
+
+            quarantine_story = PUTMETHODHERE()
+            updated_bloom_vist_dict["stories"][story_id][
+                "quarantine"
+            ] = quarantine_story
+            if quarantine_story:
+                stories_quarantined_count += 1
+
+            updated_bloom_vist_dict["stories"][story_id]["filter_methods"]["manual"] = {
+                "quarantine_result": quarantine_story,
+            }
+        print(f"Quarantined {stories_quarantined_count} for lang {lang}")
+    return updated_bloom_vist_dict
+
+
+def check_story_with_tf_iif(story, lang, tf_iif_path):
+
+    wordlist = tf_iif_path.read_text().splitlines()
+
+
+def filter_with_tf_iif(bloom_vist_dict, tf_iif_path):
+    print("Filtering with TF IFF: NOT FULLY IMPLEMENTED")
+    updated_bloom_vist_dict = bloom_vist_dict
+    stories_by_language_dict = get_stories_by_language(bloom_vist_dict)
+    languages_in_bloom = list(stories_by_language_dict.keys())
+
+    # random.shuffle(languages_in_bloom)
+    for lang in tqdm(list(languages_in_bloom)):
+        stories_for_this_lang = stories_by_language_dict[lang]
+        print(f"Checking lang {lang}, which has {len(stories_for_this_lang)} stories")
+        for story in stories_for_this_lang:
+            first_annotation = story[0]
+            story_id = first_annotation[0]["story_id"]  # first annotation, and then
+
+            quarantine_story = check_story_with_tf_iif(story, lang, tf_iif_path)
+            updated_bloom_vist_dict["stories"][story_id][
+                "quarantine"
+            ] = quarantine_story
+            if quarantine_story:
+                stories_quarantined_count += 1
+
+            updated_bloom_vist_dict["stories"][story_id]["filter_methods"]["tf_iif"] = {
+                "quarantine_result": quarantine_story,
+            }
+        print(f"Quarantined {stories_quarantined_count} for lang {lang}")
     return updated_bloom_vist_dict
 
 
 def filter_with_fasttext(bloom_vist_dict):
-    print("Filtering with Fasttext")
+    print("Filtering with Fasttext: NOT IMPLEMENTED")
     updated_bloom_vist_dict = bloom_vist_dict  # TODO:
     return updated_bloom_vist_dict
 
