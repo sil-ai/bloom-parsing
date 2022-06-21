@@ -196,43 +196,47 @@ def collapse_duplicate_albums_and_stories(
     print(f"DEDUPING STORIES")
     stories_to_keep = []
     stories_to_toss_as_indexes_pointing_to_keepers = {}
-    for story_to_check_id, story_to_check_against_id in tqdm(
-        combinations(stories_by_story_id.keys(), 2)
-    ):
-        story_to_check = stories_by_story_id[story_to_check_id]
-        story_to_check_against = stories_by_story_id[story_to_check_against_id]
+    # story_combinations = list(combinations(stories_by_story_id.keys(), 2))
+    for story_to_check_id in list(stories_by_story_id.keys()):
+        for story_to_check_against_id in list(stories_by_story_id.keys()):
 
-        first_annotation = story_to_check[0]
-        album_id_for_annotation = first_annotation[0]["album_id"]
-        story_is_in_a_dupe_album = False
-        if album_id_for_annotation in dup_keys:
-            story_is_in_a_dupe_album = True
+            # TODO: we end up checking things that are already known to be dupes multiple times. Have like a queue "stories_to_check" and pop them off one at a time perhaps?
+            # TODO: limit to stories of the same language?
 
-        # check story
-        stories_are_the_same = is_story_to_check_a_dupe_of_story_to_check_against(
-            story_to_check, story_to_check_against
-        )
-        if stories_are_the_same:
-            if story_is_in_a_dupe_album:
-                # keep the one in the non-dupe album!
-                # toss this one.
-                stories_to_toss_as_indexes_pointing_to_keepers[
-                    story_to_check_id
-                ] = story_to_check_against_id
-                print(f"story {story_to_check_id} is a dupe!")
+            story_to_check = stories_by_story_id[story_to_check_id]
+            story_to_check_against = stories_by_story_id[story_to_check_against_id]
+
+            first_annotation = story_to_check[0]
+            album_id_for_annotation = first_annotation[0]["album_id"]
+            story_is_in_a_dupe_album = False
+            if album_id_for_annotation in dup_keys:
+                story_is_in_a_dupe_album = True
+
+            # check story
+            stories_are_the_same = is_story_to_check_a_dupe_of_story_to_check_against(
+                story_to_check, story_to_check_against
+            )
+            if stories_are_the_same:
+                if story_is_in_a_dupe_album:
+                    # keep the one in the non-dupe album!
+                    # toss this one.
+                    stories_to_toss_as_indexes_pointing_to_keepers[
+                        story_to_check_id
+                    ] = story_to_check_against_id
+                    print(f"story {story_to_check_id} is a dupe!")
+                else:
+                    # this is the canonical one! It's in a non-dupe album.
+                    stories_to_keep.append(story_to_check_id)
             else:
-                # this is the canonical one! It's in a non-dupe album.
+                # Not a dupe story!
                 stories_to_keep.append(story_to_check_id)
-        else:
-            # Not a dupe story!
-            stories_to_keep.append(story_to_check_id)
 
-    for first_annotation in annotations:
-        story_id = first_annotation[0]["story_id"]
-        if story_id in stories_to_toss_as_indexes_pointing_to_keepers:
-            number_dup_ans += 1
-        else:
-            non_dupe_annotations.append(first_annotation)
+        for first_annotation in annotations:
+            story_id = first_annotation[0]["story_id"]
+            if story_id in stories_to_toss_as_indexes_pointing_to_keepers:
+                number_dup_ans += 1
+            else:
+                non_dupe_annotations.append(first_annotation)
 
     # for annotation in tqdm(annotations):
     #     album_id = annotation[0]["album_id"]
