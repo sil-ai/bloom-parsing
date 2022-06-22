@@ -287,6 +287,7 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     usefuzz=False,
     fuzz_ratio_threshold=95,
     percent_same_threshold=0.95,
+    annotations_different_threshold=5,
     different_langs_count_threshold=3,
 ):
     story_to_check_first_annotation = story_to_check[0]
@@ -356,12 +357,15 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     # if the languages are different they're not dupes.
 
     # check if all/most of the captions are the same.
-    count_of_annotations_the_same = 0
+    count_of_annotations_the_same_for_these_two_stories = 0
     dupe_pairs = []
     different_langs_count = 0
-    for story_to_check_annotation in story_to_check:
+    for i, story_to_check_annotation in enumerate(story_to_check):
 
+        
         for story_to_check_against_annotation in story_to_check_against:
+
+            
             
 
             annotation_same = False
@@ -380,7 +384,14 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
                 )
 
             if annotation_same:
-                count_of_annotations_the_same += 1
+                count_of_annotations_the_same_for_these_two_stories += 1
+                
+                count_that_are_different = i+1 - count_of_annotations_the_same_for_these_two_stories
+                if count_that_are_different > annotations_different_threshold:
+                    if debug_statements:
+                        print(f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {count_that_are_different} items that are different langs, more than threshold {annotations_different_threshold}")
+                        return False
+
 
                 pair_of_dupes = (
                     story_to_check_annotation,
@@ -389,6 +400,8 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
                 dupe_pairs.append(pair_of_dupes)
 
             if not annotation_same:
+                # they're not the same and also the languages are marked as different
+
                 if (
                 story_to_check_annotation[0]["lang"]
                 == story_to_check_against_annotation[0]["lang"]
@@ -401,11 +414,12 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
                     if debug_statements:
                         print(f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {different_langs_count} items that are different langs, more than threshold {}")
                     return False
-    percent_same = count_of_annotations_the_same / len(story_to_check)
+            
+    percent_same = count_of_annotations_the_same_for_these_two_stories / len(story_to_check)
     if percent_same > percent_same_threshold:
         if debug_statements:
             print(
-                f"The story {story_to_check_id} is a dupe of {story_to_check_against_id}, because {count_of_annotations_the_same} out of {len(story_to_check)} annotations in the story are found within it. That's {percent_same} similar, greater than the threshold of {percent_same_threshold}"
+                f"The story {story_to_check_id} is a dupe of {story_to_check_against_id}, because {count_of_annotations_the_same_for_these_two_stories} out of {len(story_to_check)} annotations in the story are found within it. That's {percent_same} similar, greater than the threshold of {percent_same_threshold}"
             )
             print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
         return True
@@ -413,7 +427,7 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     else:
         if debug_statements:
             print(
-                f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, because {count_of_annotations_the_same} out of {len(story_to_check)} annotations in the story are found within it. That's {percent_same} similar, less than the threshold of {percent_same_threshold}"
+                f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, because {count_of_annotations_the_same_for_these_two_stories} out of {len(story_to_check)} annotations in the story are found within it. That's {percent_same} similar, less than the threshold of {percent_same_threshold}"
             )
         return False
 
