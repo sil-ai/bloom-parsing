@@ -20,7 +20,11 @@ from itertools import combinations
 
 
 def collapse_duplicate_albums_and_stories(
-    bloom_vist_dict, ids_and_hashes_dict, output_json_path, images_similarity_thresh=80
+    bloom_vist_dict,
+    ids_and_hashes_dict,
+    output_json_path,
+    usefuzz,
+    images_similarity_thresh=80,
 ):
     # load in the bloom_vist_json (https://bloom-vist.s3.amazonaws.com/bloom_vist_june14.json) and
     # and ids_and_hashes json https://bloom-vist.s3.amazonaws.com/ids_and_hashes_june_14_with_image_hashes.json
@@ -224,7 +228,7 @@ def collapse_duplicate_albums_and_stories(
 
         # check story
         stories_are_the_same = is_story_to_check_a_dupe_of_story_to_check_against(
-            story_to_check, story_to_check_against
+            story_to_check, story_to_check_against, usefuzz=usefuzz
         )
         if stories_are_the_same:
 
@@ -277,6 +281,7 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     story_to_check: list,
     story_to_check_against: list,
     story_length_difference_threshold=5,
+    usefuzz=False,
     fuzz_ratio_threshold=95,
     percent_same_threshold=0.95,
 ):
@@ -350,18 +355,22 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     for story_to_check_annotation in story_to_check:
 
         for story_to_check_against_annotation in story_to_check_against:
-
-            if (
-                fuzz.ratio(
-                    story_to_check_annotation[0]["text"],
-                    story_to_check_against_annotation[0]["text"],
+            annotation_same = False
+            if usefuzz:
+                annotation_same = (
+                    fuzz.ratio(
+                        story_to_check_annotation[0]["text"],
+                        story_to_check_against_annotation[0]["text"],
+                    )
+                    > fuzz_ratio_threshold
                 )
-                > fuzz_ratio_threshold
-            ):
-                # if (
-                #     story_to_check_annotation[0]["text"]
-                #     == story_to_check_against_annotation[0]["text"]
-                # ):
+            else:
+                annotation_same = (
+                    story_to_check_annotation[0]["text"]
+                    == story_to_check_against_annotation[0]["text"]
+                )
+
+            if annotation_same:
                 count_of_annotations_the_same += 1
 
                 pair_of_dupes = (
@@ -408,11 +417,13 @@ if __name__ == "__main__":
         help="json to dedupe",
     )
 
+    parser.add_argument("--usefuzz", action="store_true", default=False)
+
     args = parser.parse_args()
 
     # output_json_path = "bloom_vist_june14_albums_images_deduped.json"
     output_json_path = args.path_to_bloom_vist_json.parent / (
-        args.path_to_bloom_vist_json.stem + "_deduped_on_june21.json"
+        args.path_to_bloom_vist_json.stem + "_deduped.json"
     )
 
     with open(str(args.path_to_bloom_vist_json)) as bvf:
@@ -421,8 +432,10 @@ if __name__ == "__main__":
     with open(str(path_to_precomputed_file_ids_and_hashes_json)) as idf:
         ids_and_hashes_dict = json.load(idf)
     updated_bloom_vist_dict = collapse_duplicate_albums_and_stories(
-        bloom_vist_dict, ids_and_hashes_dict, output_json_path
+        bloom_vist_dict, ids_and_hashes_dict, output_json_path, args.usefuzz
     )
+
+    updated_bloom_vist_dict["dedupe_date"] = (str(datetime.datetime.utcnow()),)
 
     with open(output_json_path, "w") as fixed_file:
         json.dump(updated_bloom_vist_dict, fixed_file)
