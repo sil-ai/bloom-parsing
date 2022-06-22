@@ -1,4 +1,5 @@
 from collections import defaultdict
+import datetime
 from functools import cache
 from pathlib import Path
 import argparse
@@ -287,23 +288,30 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
     print()
     print("###############################")
     print("FILTERING MANUALLY")
+    annotator = input("Who is annotating this? ")
     updated_bloom_vist_dict = bloom_vist_dict
     stories_by_language_dict = get_stories_by_language(bloom_vist_dict)
     languages_in_bloom = list(stories_by_language_dict.keys())
-    stories_quarantined_count = 0
+
     stories_total_count = len(bloom_vist_dict["stories"].keys())
     already_manually_checked_count = 0
+
+    langs_that_have_received_some_checking = []
 
     for story_id in bloom_vist_dict["stories"].keys():
         story_metadata = bloom_vist_dict["stories"][story_id]
         if "manual" in story_metadata["filter_methods"]:
             already_manually_checked_count += 1
-
-    print(
-        f"In the dict we already have {already_manually_checked_count} stories manually checked"
+            langs_that_have_received_some_checking.append(story_metadata["bloom_lang"])
+    langs_that_have_received_some_checking = list(
+        set(langs_that_have_received_some_checking)
     )
 
-    # random.shuffle(languages_in_bloom)
+    print(
+        f"In the dict we already have {already_manually_checked_count} stories manually checked, out of {stories_total_count}. {len(langs_that_have_received_some_checking)} languages have received some checking"
+    )
+
+    random.shuffle(languages_in_bloom)
     for i, lang in enumerate(list(languages_in_bloom)):
         displayname = langcodes.get(lang).display_name()
         stories_for_this_lang = stories_by_language_dict[lang]
@@ -316,11 +324,15 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
             for story_id in story_ids_for_lang
         ]
 
+        print()
+        print("*********")
+        print(f"LANG: {lang} ({displayname})")
         print(
-            f"Checking lang {i} of {len(languages_in_bloom)} {lang}, which has {len(stories_for_this_lang)} stories, of which {sum(manually_filtered_stories)} have been manually checked"
+            f"Checking lang {i} of {len(languages_in_bloom)} {lang}, which has {len(stories_for_this_lang)} stories, of which {manually_filtered_stories.count(True)} have been manually checked"
         )
 
         quarantine_whole_language = None
+        stories_quarantined_count = 0
         skip_rest_of_stories = False
 
         if all(manually_filtered_stories):
@@ -352,18 +364,24 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
 
                 print()
                 print(
-                    f"MANUALLY CHECKING ANNOTATIONS FOR story {j}/{len(stories_for_this_lang)} with id {story_id}, already filtered by {story_filters}"
+                    f"MANUALLY CHECKING {sample_annotations_count} ANNOTATIONS FOR story {j}/{len(stories_for_this_lang)} with id {story_id}, already filtered by {story_filters}"
                 )
+                print("``````````````````")
+                print()
                 for sample_annotation in sample_annotations:
                     print(sample_annotation[0]["text"])
+                print()
+                print("``````````````````")
 
                 answer = input(
-                    f"Are you sure these annotations for {lang} ({displayname}) are in-language? y/n, or g to mark whole language as good, b for whole language as bad, or s to skip to next language: "
+                    f"{j}/{len(stories_for_this_lang)} {lang} ({displayname}): Are these annotations probably fine/not obviously wrong-language? y/n, or g to mark whole language as good, b for whole language as bad, or s to skip to next language: "
                 )
                 if answer.lower() == "y" or answer.lower() == "yes":
                     quarantine_story = False
+                    print("story kept")
                 elif answer.lower() == "n":
                     quarantine_story = True
+                    print("story quarantined")
                 elif answer.lower() == "b":
                     quarantine_whole_language = True
                     print("marking whole language as quarantined")
@@ -382,12 +400,14 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
             updated_bloom_vist_dict["stories"][story_id][
                 "quarantine"
             ] = quarantine_story
+
             if quarantine_story:
                 stories_quarantined_count += 1
 
             updated_bloom_vist_dict["stories"][story_id]["filter_methods"]["manual"] = {
                 "quarantine_result": quarantine_story,
                 "actually_checked_manually": True,
+                "annotator": annotator,
             }
             if quarantine_whole_language is not None:
                 updated_bloom_vist_dict["stories"][story_id]["filter_methods"][
@@ -490,6 +510,7 @@ if __name__ == "__main__":
     updated_bloom_vist_dict = update_bloom_vist_dict_with_story_metadata_dict(
         bloom_vist_dict
     )
+    updated_bloom_vist_dict["last_filter_date"] = (str(datetime.datetime.utcnow()),)
     print(f"We have {len(bloom_vist_dict['stories'].keys())} stories")
 
     out_stem = args.path_to_bloom_vist_json.stem
