@@ -284,7 +284,7 @@ def filter_template(bloom_vist_dict):
     return updated_bloom_vist_dict
 
 
-def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=3):
+def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=4):
     print()
     print("###############################")
     print("FILTERING MANUALLY")
@@ -325,8 +325,10 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
         ]
 
         print()
-        print("*********")
-        print(f"LANG: {lang} ({displayname})")
+        print()
+        print("*************************************************")
+        print("*************************************************")
+        print(f"LANG {i}: {lang} ({displayname})")
         print(
             f"Checking lang {i} of {len(languages_in_bloom)} {lang}, which has {len(stories_for_this_lang)} stories, of which {manually_filtered_stories.count(True)} have been manually checked"
         )
@@ -358,13 +360,17 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
             if quarantine_whole_language is None:
 
                 story_length = len(story)
-                sample_annotations_count = min(story_length, sample_annotations_count)
+                sample_annotations_count_for_this_story = min(
+                    story_length, sample_annotations_count
+                )
 
-                sample_annotations = random.sample(story, k=sample_annotations_count)
+                sample_annotations = random.sample(
+                    story, k=sample_annotations_count_for_this_story
+                )
 
                 print()
                 print(
-                    f"MANUALLY CHECKING {sample_annotations_count} ANNOTATIONS FOR story {j}/{len(stories_for_this_lang)} with id {story_id}, already filtered by {story_filters}"
+                    f"MANUALLY CHECKING {sample_annotations_count_for_this_story} ANNOTATIONS out of {story_length} FOR story {j+1}/{len(stories_for_this_lang)} with id {story_id}, already filtered by {story_filters}"
                 )
                 print("``````````````````")
                 print()
@@ -374,7 +380,7 @@ def filter_manually(bloom_vist_dict, output_json_path, sample_annotations_count=
                 print("``````````````````")
 
                 answer = input(
-                    f"{j}/{len(stories_for_this_lang)} {lang} ({displayname}): Are these annotations probably fine/not obviously wrong-language? y/n, or g to mark whole language as good, b for whole language as bad, or s to skip to next language: "
+                    f"{j+1}/{len(stories_for_this_lang)} {lang} ({displayname}): Are these annotations probably fine/not obviously wrong-language? y/n, or g to mark whole language as good, b for whole language as bad, or s to skip to next language: "
                 )
                 if answer.lower() == "y" or answer.lower() == "yes":
                     quarantine_story = False
