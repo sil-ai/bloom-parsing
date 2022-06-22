@@ -26,6 +26,25 @@ def collapse_duplicate_albums_and_stories(
     usefuzz,
     images_similarity_thresh=80,
 ):
+    (
+        album_ids_in_images,
+        album_ids_in_albums,
+        album_ids_in_annotations,
+        story_ids_in_annotations,
+    ) = get_all_the_unique_ids_in_each_array(bloom_vist_dict)
+    print(
+        f"as we begin... \n\t* we have {len(album_ids_in_images)} unique album IDs in the images array"
+    )
+    print(
+        f"\n\t* we have {len(album_ids_in_albums)} unique album IDs in the albums array"
+    )
+    print(
+        f"\n\t* we have {len(album_ids_in_annotations)} unique album IDs in the annotations array"
+    )
+    print(
+        f"\n\t* we have {len(story_ids_in_annotations)} unique story IDs in the annotations array"
+    )
+
     # load in the bloom_vist_json (https://bloom-vist.s3.amazonaws.com/bloom_vist_june14.json) and
     # and ids_and_hashes json https://bloom-vist.s3.amazonaws.com/ids_and_hashes_june_14_with_image_hashes.json
     # get all the albums
@@ -144,18 +163,21 @@ def collapse_duplicate_albums_and_stories(
     duplicate_album_ids_dict = dict(
         (dupe, non_dupe) for non_dupe, v in dupe_album_ids.items() for dupe in v
     )
+
+    print(f"updating album ids in images")
     for image in tqdm(images):
         album_id = image["album_id"]
         if album_id in duplicate_album_ids_dict.keys():
             image["album_id"] = duplicate_album_ids_dict[album_id]
 
+    print(f"updating album ids in annotations")
     for annotation in tqdm(annotations):
         album_id = annotation[0]["album_id"]
         if album_id in duplicate_album_ids_dict.keys():
             annotation[0]["album_id"] = duplicate_album_ids_dict[album_id]
 
     # Intermediate save of albums and images to speedup any debugging of the annotation deduplication
-    updated_bloom_vist_dict["utc_creation_date"] = datetime.now().strftime(
+    updated_bloom_vist_dict["utc_creation_date"] = datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
     updated_bloom_vist_dict["duplicate_ids_list"] = dupe_album_ids
@@ -262,6 +284,24 @@ def collapse_duplicate_albums_and_stories(
     print(
         "Duplicate Stories found", len(stories_to_toss_as_indexes_pointing_to_keepers)
     )
+    (
+        album_ids_in_images,
+        album_ids_in_albums,
+        album_ids_in_annotations,
+        story_ids_in_annotations,
+    ) = get_all_the_unique_ids_in_each_array(bloom_vist_dict)
+    print(
+        f"as we end... \n\t* we have {len(album_ids_in_images)} unique album IDs in the images array"
+    )
+    print(
+        f"\n\t* we have {len(album_ids_in_albums)} unique album IDs in the albums array"
+    )
+    print(
+        f"\n\t* we have {len(album_ids_in_annotations)} unique album IDs in the annotations array"
+    )
+    print(
+        f"\n\t* we have {len(story_ids_in_annotations)} unique story IDs in the annotations array"
+    )
 
     sample_count = min(5, len(stories_to_toss_as_indexes_pointing_to_keepers))
     dupe_story_samples = list(stories_to_toss_as_indexes_pointing_to_keepers.keys())
@@ -278,6 +318,61 @@ def collapse_duplicate_albums_and_stories(
         # for annotation in dupe_story_to_show:
         #     print(annotation[0]["text"])
     return updated_bloom_vist_dict
+
+
+def get_all_the_unique_ids_in_each_array(bloom_vist_dict):
+
+    # Annotation:
+    #      {
+    #     "album_id": "ed7eb6e9-fef2-4f01-bd0b-803b4bc8eb22",
+    #     "photo_flickr_id": "9d6fdf53-ece6-42b5-84a0-833d49c7f5de",
+    #     "story_id": "ccb7fef2-4f13-4d3c-a03d-eeb34149c9c6",
+    #     "worker_arranged_photo_order": 0,
+    #     "text": "ښوونکې ورته وویل: کریمه!\nولې دې درس نه دی زده.",
+    #     "lang": "pbt"
+    #      }
+
+    # Image
+    # {
+    #   "album_id": "ed7eb6e9-fef2-4f01-bd0b-803b4bc8eb22",
+    #   "url_o": "https://bloom-vist.s3.amazonaws.com/%D9%BE%D8%B1+%D9%88%D8%AE%D8%AA+%D9%BE%D8%A7%D8%A8%D9%86%D8%AF%D9%8A/41.jpg",
+    #   "local_image_path": "پر وخت پابندي/41.jpg",
+    #   "media": "photo",
+    #   "id": "9d6fdf53-ece6-42b5-84a0-833d49c7f5de"
+    # }
+    # print()
+    album_ids_in_images = []
+    album_ids_in_albums = []
+    album_ids_in_annotations = []
+    story_ids_in_annotations = []
+
+    albums_count = 0
+
+    for image in bloom_vist_dict["images"]:
+        album_id = image["album_id"]
+        album_ids_in_images.append(album_id)
+
+    for album in bloom_vist_dict["albums"]:
+        album_id = album["id"]
+        album_ids_in_albums.append(album_id)
+
+    for annotation in bloom_vist_dict["annotations"]:
+        album_id = annotation[0]["album_id"]
+        album_ids_in_annotations.append(album_id)
+        story_id = annotation[0]["story_id"]
+        story_ids_in_annotations.append(story_id)
+
+    album_ids_in_images = list(set(album_ids_in_images))
+    album_ids_in_albums = list(set(album_ids_in_albums))
+    album_ids_in_annotations = list(set(album_ids_in_annotations))
+    story_ids_in_annotations = list(set(story_ids_in_annotations))
+
+    return (
+        album_ids_in_images,
+        album_ids_in_albums,
+        album_ids_in_annotations,
+        story_ids_in_annotations,
+    )
 
 
 def is_story_to_check_a_dupe_of_story_to_check_against(
@@ -297,18 +392,24 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     story_to_check_against_id = story_to_check_against_first_annotation[0]["story_id"]
     debug_statements = False
 
-    if (
-        "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_id
-        and "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_against_id
-    ):
+    # if "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_id:
+    #     debug_statements = True
 
-        debug_statements = True
+    # if "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_id:
+    #     debug_statements = True
 
-    if (
-        "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_id
-        and "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_against_id
-    ):
-        debug_statements = True
+    # if (
+    #     "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_id
+    #     and "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_against_id
+    # ):
+
+    #     debug_statements = True
+
+    # if (
+    #     "f46fc1b9-e512-429e-bf81-b47068553d48" in story_to_check_id
+    #     and "7056431e-1924-47a1-ba5a-e8b67b1b857e" in story_to_check_against_id
+    # ):
+    #     debug_statements = True
 
     # if (
     #     "TESTING" in story_to_check_id
@@ -362,11 +463,7 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     different_langs_count = 0
     for i, story_to_check_annotation in enumerate(story_to_check):
 
-        
         for story_to_check_against_annotation in story_to_check_against:
-
-            
-            
 
             annotation_same = False
             if usefuzz:
@@ -385,13 +482,16 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
 
             if annotation_same:
                 count_of_annotations_the_same_for_these_two_stories += 1
-                
-                count_that_are_different = i+1 - count_of_annotations_the_same_for_these_two_stories
+
+                count_that_are_different = (
+                    i + 1 - count_of_annotations_the_same_for_these_two_stories
+                )
                 if count_that_are_different > annotations_different_threshold:
                     if debug_statements:
-                        print(f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {count_that_are_different} items that are different langs, more than threshold {annotations_different_threshold}")
+                        print(
+                            f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {count_that_are_different} items that are different langs, more than threshold {annotations_different_threshold}"
+                        )
                         return False
-
 
                 pair_of_dupes = (
                     story_to_check_annotation,
@@ -403,19 +503,23 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
                 # they're not the same and also the languages are marked as different
 
                 if (
-                story_to_check_annotation[0]["lang"]
-                == story_to_check_against_annotation[0]["lang"]
+                    story_to_check_annotation[0]["lang"]
+                    == story_to_check_against_annotation[0]["lang"]
                 ):
                     pass  # all is well
                 else:
                     different_langs_count += 1
-                
+
                 if different_langs_count > different_langs_count_threshold:
                     if debug_statements:
-                        print(f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {different_langs_count} items that are different langs, more than threshold {}")
+                        print(
+                            f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {different_langs_count} items that are different langs, more than threshold {different_langs_count_threshold}"
+                        )
                     return False
-            
-    percent_same = count_of_annotations_the_same_for_these_two_stories / len(story_to_check)
+
+    percent_same = count_of_annotations_the_same_for_these_two_stories / len(
+        story_to_check
+    )
     if percent_same > percent_same_threshold:
         if debug_statements:
             print(
