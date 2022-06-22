@@ -3,7 +3,7 @@ import json
 from copy import deepcopy
 from tqdm import tqdm
 from pathlib import Path
-from datetime import datetime
+import datetime
 from collections import defaultdict
 from thefuzz import fuzz
 import random
@@ -149,6 +149,11 @@ def collapse_duplicate_albums_and_stories(
         if album_id in duplicate_album_ids_dict.keys():
             image["album_id"] = duplicate_album_ids_dict[album_id]
 
+    for annotation in tqdm(annotations):
+        album_id = annotation[0]["album_id"]
+        if album_id in duplicate_album_ids_dict.keys():
+            annotation[0]["album_id"] = duplicate_album_ids_dict[album_id]
+
     # Intermediate save of albums and images to speedup any debugging of the annotation deduplication
     updated_bloom_vist_dict["utc_creation_date"] = datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
@@ -159,8 +164,8 @@ def collapse_duplicate_albums_and_stories(
     with open(output_json_path, "w") as fixed_file:
         json.dump(updated_bloom_vist_dict, fixed_file)
 
-    print("dedupe stories/captions")
     # DEDUPE STORIES/CAPTIONS + DELETE DUPLICATE STORIES
+    print("dedupe stories/captions")
     non_dupe_annotations = []
     number_dup_ans = 0
     dup_keys = duplicate_album_ids_dict.keys()
@@ -219,8 +224,6 @@ def collapse_duplicate_albums_and_stories(
     for story_to_check_id, story_to_check_against_id in tqdm(story_combinations):
         if story_to_check_id in stories_to_toss_as_indexes_pointing_to_keepers:
             continue  # already know this one is a dupe of something, skip it.
-
-        # TODO: we end up checking things that are already known to be dupes multiple times. Have like a queue "stories_to_check" and pop them off one at a time perhaps?
         # TODO: limit to stories of the same language?
 
         story_to_check = stories_by_story_id[story_to_check_id]
@@ -284,6 +287,7 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
     usefuzz=False,
     fuzz_ratio_threshold=95,
     percent_same_threshold=0.95,
+    different_langs_count_threshold=3,
 ):
     story_to_check_first_annotation = story_to_check[0]
     story_to_check_id = story_to_check_first_annotation[0]["story_id"]
@@ -349,12 +353,17 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
             )
         return False
 
+    # if the languages are different they're not dupes.
+
     # check if all/most of the captions are the same.
     count_of_annotations_the_same = 0
     dupe_pairs = []
+    different_langs_count = 0
     for story_to_check_annotation in story_to_check:
 
         for story_to_check_against_annotation in story_to_check_against:
+            
+
             annotation_same = False
             if usefuzz:
                 annotation_same = (
@@ -378,6 +387,20 @@ def is_story_to_check_a_dupe_of_story_to_check_against(
                     story_to_check_against_annotation,
                 )
                 dupe_pairs.append(pair_of_dupes)
+
+            if not annotation_same:
+                if (
+                story_to_check_annotation[0]["lang"]
+                == story_to_check_against_annotation[0]["lang"]
+                ):
+                    pass  # all is well
+                else:
+                    different_langs_count += 1
+                
+                if different_langs_count > different_langs_count_threshold:
+                    if debug_statements:
+                        print(f"The story {story_to_check_id} is NOT a dupe of {story_to_check_against_id}, We've now found {different_langs_count} items that are different langs, more than threshold {}")
+                    return False
     percent_same = count_of_annotations_the_same / len(story_to_check)
     if percent_same > percent_same_threshold:
         if debug_statements:
