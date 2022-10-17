@@ -2,9 +2,7 @@ from enum import unique
 import json
 
 if __name__ == "__main__":
-    with open(
-        "bloom_downloads_vist_filtered_by_license_2022-04-29T1141.json", "r"
-    ) as jsf:
+    with open("data/bloom_vist_june14.json", "r",) as jsf:
         data = json.load(jsf)
     annotations = data["annotations"]
 
