@@ -465,8 +465,15 @@ def filter_with_tf_iif(bloom_vist_dict, tf_iif_path):
 
 def filter_with_fasttext(bloom_vist_dict):
     print("Filtering with Fasttext: NOT IMPLEMENTED")
+    # https://fasttext.cc/docs/en/language-identification.html
     updated_bloom_vist_dict = bloom_vist_dict  # TODO:
     return updated_bloom_vist_dict
+
+
+def filter_with_cld3():
+    raise NotImplementedError("CLD3 not yet implemented")
+    # https://github.com/google/cld3
+    # TODO: Sebastian Ruder recommends this, based on https://aclanthology.org/2022.acl-long.500.pdf
 
 
 if __name__ == "__main__":
@@ -539,6 +546,9 @@ if __name__ == "__main__":
 
     if args.filter_with_tf_iif:
         updated_bloom_vist_dict = filter_with_tf_iif(bloom_vist_dict, args.tf_iif_path)
+
+    # TODO: remove this exact string
+    # 'If you need somewhere to put more information about the book, you can use this page, which is the outside of the back cover.'
 
     quarantined_count = count_quarantined(updated_bloom_vist_dict)
     print(
