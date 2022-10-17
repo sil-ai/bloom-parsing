@@ -558,7 +558,12 @@ if __name__ == "__main__":
         help="json to dedupe",
     )
 
-    parser.add_argument("--usefuzz", action="store_true", default=False)
+    parser.add_argument(
+        "--usefuzz",
+        action="store_true",
+        default=False,
+        help="use fuzzy-matching to determine if string annotations are the same. Takes longer. Otherwise, it will check for exact string matches",
+    )
 
     args = parser.parse_args()
 
