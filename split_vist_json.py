@@ -2385,40 +2385,11 @@ def get_story_ids_by_language(bloom_vist_dict):
     return stories_by_language
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Take bloom downloads and output SIS JSON"
-    )
+def create_split_jsons_for_each_language(
+    input_json_path, bloom_vist_dict, output_folder, stories_by_lang
+):
 
-    parser.add_argument(
-        "path_to_bloom_vist_json",
-        # dest="source",
-        type=Path,
-        default=Path(
-            "dedupe_june22/bloom_vist_june15_deduped_june21_langfiltered_june22.json"
-        ),
-        help="json to split",
-    )
-
-    parser.add_argument(
-        "--output_folder",
-        # dest="source",
-        type=Path,
-        default=Path("splitting/"),
-        help="json to split",
-    )
-
-    args = parser.parse_args()
-    with open(str(args.path_to_bloom_vist_json)) as bvf:
-        bloom_vist_dict = json.load(bvf)
-
-    print(bloom_vist_dict.keys())
-    output_folder = Path(args.output_folder)
-    output_folder.mkdir(exist_ok=True, parents=True)
-
-    stories_by_lang = get_story_ids_by_language(bloom_vist_dict)
-    # print(stories_by_lang)
-    for lang in list(stories_by_lang)[:3]:
+    for lang in list(stories_by_lang):
         stories_for_lang = list(set(stories_by_lang[lang]))
 
         print(f"{lang} has {len(stories_for_lang)} stories")
@@ -2452,9 +2423,48 @@ if __name__ == "__main__":
                     split_copy["albums"].append(album)
 
             output_json_path = (
-                output_folder
-                / f"{args.path_to_bloom_vist_json.stem }_{lang}_{name}.json"
+                output_folder / f"{input_json_path.stem }_{lang}_{name}.json"
             )
 
             with open(output_json_path, "w") as out_file:
                 json.dump(split_copy, out_file)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Take VIST JSON and output splits per language"
+    )
+
+    parser.add_argument(
+        "path_to_bloom_vist_json",
+        # dest="source",
+        type=Path,
+        default=Path(
+            "dedupe_june22/bloom_vist_june15_deduped_june21_langfiltered_june22.json"
+        ),
+        help="json to split",
+    )
+
+    parser.add_argument(
+        "--output_folder",
+        # dest="source",
+        type=Path,
+        default=Path("splitting/"),
+        help="json to split",
+    )
+
+    args = parser.parse_args()
+    with open(str(args.path_to_bloom_vist_json)) as bvf:
+        bloom_vist_dict = json.load(bvf)
+
+    print(bloom_vist_dict.keys())
+    output_folder = Path(args.output_folder)
+    output_folder.mkdir(exist_ok=True, parents=True)
+    input_json_path = args.path_to_bloom_vist_json
+
+    stories_by_lang = get_story_ids_by_language(bloom_vist_dict)
+    # print(stories_by_lang)
+    create_split_jsons_for_each_language(
+        input_json_path, bloom_vist_dict, output_folder, stories_by_lang,
+    )
+
