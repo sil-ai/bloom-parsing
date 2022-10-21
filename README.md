@@ -8,7 +8,7 @@ The overall pipeline as of submission to EMNLP.
 - dataset_stats.py then takes the resulting json and outputs various stats, dicts, etc., which I copy-paste into the top of bloom_captioning.py for example. For example the _BLOOM_LANGUAGES_ALPHA3_VALID is generated here. 
 - bloom_captioning.py is the loading script for the captioning set, depends on the dictionaries above, and uses the "quarantine" field. 
 - test_load.py tests the loading script and has some useful functions to, like, show one image or save off splits.
-
+- add_in_storylet_ids_if_they_dont_exist.py will take in a JSON, search through annotation fields, and add in the storylet_id field. Turns out having some unique value for each annotation is needed for some codebases. 
 
 Important: 
 - precompute_file_uuids_and_hashes: Given a directory of Bloom books, will calculate md5 and uuid for each file and output them. The resulting ids_and_hashes JSON is used in the pipeline above. 
