@@ -8,6 +8,7 @@ if __name__ == "__main__":
     # Copy images referenced in the VIST-format JSON created by bloom_downloads_to_vist_format
     # so that we can upload it all to s3.
     # takes in: path to bloom_downloads, json output of bloom_downloads_to_vist_format.py, output_folder
+    # aws s3 sync --dryrun data/images_to_upload s3://bloom-vist/
     json_to_read = Path("data/bloom_vist_june14.json")
     bloom_downloads_path = Path("data/bloom_downloads")
     output_folder = Path("data/images_to_upload")
