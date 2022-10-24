@@ -1,6 +1,8 @@
 from enum import unique
 import json
 
+# CDL: a script to count unique languages in annotation elements in a VIST Json
+
 if __name__ == "__main__":
     with open("data/bloom_vist_june14.json", "r",) as jsf:
         data = json.load(jsf)
