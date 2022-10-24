@@ -170,3 +170,9 @@ old/
 some_bloom_downloads_with_pictures_including_3_chuskits/
 logs/
 foo/
+misc_outputs_and_files/
+test_downloading_image_urls/images
+test_downloading_image_urls/wget_head_output.txt
+
+# this folder contains jsons output by splitting script
+splitting/ 
